@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\MaxAgentController;
 use App\Http\Controllers\Api\MaxConversaController;
 use App\Http\Controllers\Api\MaxUsageController;
 use App\Http\Controllers\Api\NotaController;
+use App\Http\Controllers\Api\NotificacaoWhatsappController;
 use App\Http\Controllers\Api\ParcelaController;
 use App\Http\Controllers\Api\PlanoPagamentoController;
 use App\Http\Controllers\Api\ProfessorController;
@@ -162,4 +163,12 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
         Route::post('/parcelas/renegociar', [ParcelaController::class, 'renegociar']);
         Route::get('/inadimplencia', [ParcelaController::class, 'inadimplencia']);
     });
+});
+
+// Equivalente a api/whatsapp/{testar_notificacoes,get_historico_notificacoes}.php.
+// api/whatsapp/enviar_notificacoes_diarias.php (cron CLI multi-tenant) NÃO foi
+// portado — ver comentário em NotificacaoWhatsappController.
+Route::prefix('whatsapp')->middleware(['max.jwt', 'max.role:Administrador'])->group(function () {
+    Route::post('/testar', [NotificacaoWhatsappController::class, 'testar']);
+    Route::get('/historico', [NotificacaoWhatsappController::class, 'historico']);
 });
