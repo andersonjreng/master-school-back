@@ -96,6 +96,17 @@ class ToolRegistry
                 'input_schema' => ['type' => 'object', 'properties' => new \stdClass()],
             ];
             $tools[] = [
+                'name'        => 'buscar_frequencia_geral',
+                'description' => 'Retorna o percentual de presença de TODAS as turmas da escola num ano/mês, já indicando quais estão abaixo da meta de 75%. Use pra perguntas agregadas sobre frequência da escola (ex: "como está a frequência geral?", "quais turmas estão com frequência baixa?") — não precisa chamar turma por turma.',
+                'input_schema' => [
+                    'type'       => 'object',
+                    'properties' => [
+                        'ano' => ['type' => 'integer', 'description' => 'Ano letivo. Padrão: ano atual.'],
+                        'mes' => ['type' => 'integer', 'description' => 'Mês (1-12), opcional. Sem isso, considera o ano inteiro.'],
+                    ],
+                ],
+            ];
+            $tools[] = [
                 'name'        => 'buscar_parcelas_aluno',
                 'description' => 'Retorna as parcelas/mensalidades de um aluno específico: valores, vencimentos, status (pendente, pago, vencido, cancelado, negociado) e encargos por atraso.',
                 'input_schema' => [

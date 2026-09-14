@@ -2,13 +2,17 @@
 
 namespace App\Services\Max;
 
+use App\Services\Frequencia\ResumoGeralService;
+
 /**
  * Equivalente a executarFerramenta() em api/agent/agent.php.
  */
 class ToolExecutor
 {
-    public function __construct(private LegacyApiClient $api)
-    {
+    public function __construct(
+        private LegacyApiClient $api,
+        private ResumoGeralService $resumoGeral,
+    ) {
     }
 
     public function executar(
@@ -46,6 +50,7 @@ class ToolExecutor
             'buscar_turmas' => $this->api->get('/admin/get_turmas_detalhes.php', [], $token),
             'buscar_professores' => $this->api->get('/professores/get_professores.php', [], $token),
             'buscar_frequencia_aluno' => $this->buscarFrequenciaAluno($input, $token),
+            'buscar_frequencia_geral' => $this->buscarFrequenciaGeral($input),
             'buscar_notas_aluno' => $this->buscarNotasAluno($input, $token, $isProfessor, $alunosProfessor, $disciplinasProfessor, $unidadesLetivasIds),
             'buscar_proximas_avaliacoes' => $this->buscarProximasAvaliacoes($input, $token, $isResponsavel, $dependentesPermitidos, $isProfessor, $turmasProfessor),
             'buscar_parcelas_aluno' => $this->buscarParcelasAluno($input, $token, $isResponsavel),
@@ -77,6 +82,27 @@ class ToolExecutor
             'aluno_id' => (int) ($input['aluno_id'] ?? 0),
             'ano'      => $input['ano'] ?? date('Y'),
         ], $token);
+    }
+
+    /**
+     * Frequência agregada por turma, direto no banco local (o módulo de
+     * frequência já foi migrado pra cá) — evita precisar de uma chamada por
+     * turma dentro do loop de tools, que tem teto de iterações.
+     */
+    private function buscarFrequenciaGeral(array $input): array
+    {
+        $ano = (int) ($input['ano'] ?? date('Y'));
+        $mes = isset($input['mes']) ? (int) $input['mes'] : null;
+
+        $porTurma = $this->resumoGeral->porTurma($ano, $mes);
+        $abaixoDaMeta = array_values(array_filter($porTurma, fn ($t) => $t['abaixo_da_meta']));
+
+        return [
+            'ano' => $ano,
+            'mes' => $mes,
+            'turmas' => $porTurma,
+            'turmas_abaixo_da_meta' => $abaixoDaMeta,
+        ];
     }
 
     private function buscarNotasAluno(array $input, string $token, bool $isProfessor, array $alunosProfessor, array $disciplinasProfessor, array $unidadesLetivasIds): array
