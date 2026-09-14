@@ -1,10 +1,12 @@
 <?php
 
+use App\Http\Controllers\Api\AvaliacaoController;
 use App\Http\Controllers\Api\DocumentoController;
 use App\Http\Controllers\Api\FrequenciaController;
 use App\Http\Controllers\Api\MaxAgentController;
 use App\Http\Controllers\Api\MaxConversaController;
 use App\Http\Controllers\Api\MaxUsageController;
+use App\Http\Controllers\Api\NotaController;
 use App\Http\Controllers\Api\RegistroAulaController;
 use Illuminate\Support\Facades\Route;
 
@@ -46,4 +48,27 @@ Route::prefix('registros-aula')->middleware('max.jwt')->group(function () {
     Route::get('/', [RegistroAulaController::class, 'index']);
     Route::get('/resumo-mensal', [RegistroAulaController::class, 'resumoMensal']);
     Route::post('/', [RegistroAulaController::class, 'salvar']);
+});
+
+// Equivalente a api/avaliacoes/*.php do backend legado (get_frequencia_anual.php
+// e post_frequencia.php não portados — dead code, referenciam colunas que não
+// existem na tabela `frequencia` atual e não têm nenhum uso no frontend).
+Route::prefix('avaliacoes')->middleware('max.jwt')->group(function () {
+    Route::get('/tipos', [AvaliacaoController::class, 'tiposAvaliacao']);
+    Route::get('/unidades-letivas', [AvaliacaoController::class, 'unidadesLetivas']);
+    Route::get('/', [AvaliacaoController::class, 'index']);
+    Route::post('/', [AvaliacaoController::class, 'store']);
+    Route::put('/', [AvaliacaoController::class, 'update']);
+    Route::delete('/', [AvaliacaoController::class, 'destroy']);
+});
+
+Route::prefix('notas')->middleware('max.jwt')->group(function () {
+    Route::get('/por-aluno', [NotaController::class, 'porAluno']);
+    Route::get('/por-avaliacao', [NotaController::class, 'alunosPorAvaliacao']);
+    Route::get('/grade-turma-disciplina', [NotaController::class, 'porTurmaDisciplina']);
+    Route::get('/grade-turma-disciplina/grafico', [NotaController::class, 'porTurmaDisciplinaChart']);
+    Route::get('/media-final-anual', [NotaController::class, 'mediaFinalAnual']);
+    Route::get('/medias-bimestrais', [NotaController::class, 'mediasBimestrais']);
+    Route::post('/lote', [NotaController::class, 'storeLote']);
+    Route::put('/', [NotaController::class, 'update']);
 });
