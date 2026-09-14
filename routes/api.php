@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\MaxAgentController;
 use App\Http\Controllers\Api\MaxConversaController;
 use App\Http\Controllers\Api\MaxUsageController;
 use App\Http\Controllers\Api\NotaController;
+use App\Http\Controllers\Api\ProfessorController;
 use App\Http\Controllers\Api\RegistroAulaController;
 use Illuminate\Support\Facades\Route;
 
@@ -71,4 +72,20 @@ Route::prefix('notas')->middleware('max.jwt')->group(function () {
     Route::get('/medias-bimestrais', [NotaController::class, 'mediasBimestrais']);
     Route::post('/lote', [NotaController::class, 'storeLote']);
     Route::put('/', [NotaController::class, 'update']);
+});
+
+// Equivalente a api/professores/*.php do backend legado (get_frequencias.php e
+// post_frequencia.php não portados — dead code, escrevem/leem uma tabela
+// `frequencias` no plural que não existe; get_todos_alunos.php não portado —
+// sem nenhum uso no frontend).
+Route::prefix('professores')->middleware('max.jwt')->group(function () {
+    Route::get('/', [ProfessorController::class, 'index']);
+    Route::post('/', [ProfessorController::class, 'store']);
+    Route::post('/atualizar', [ProfessorController::class, 'update']);
+    Route::get('/minhas-turmas', [ProfessorController::class, 'minhasTurmas']);
+    Route::get('/minhas-disciplinas', [ProfessorController::class, 'minhasDisciplinas']);
+    Route::get('/alunos-por-turma', [ProfessorController::class, 'alunosPorTurma']);
+    Route::get('/frequencia-por-turma', [ProfessorController::class, 'frequenciaPorTurma']);
+    Route::get('/historico-frequencia', [ProfessorController::class, 'historicoFrequencia']);
+    Route::post('/frequencia', [ProfessorController::class, 'salvarFrequencia']);
 });
