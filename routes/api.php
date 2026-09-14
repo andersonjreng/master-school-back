@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AlunoController;
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AvaliacaoController;
 use App\Http\Controllers\Api\DescontoPadraoController;
 use App\Http\Controllers\Api\DocumentoController;
@@ -18,6 +19,9 @@ use App\Http\Controllers\Api\ReciboController;
 use App\Http\Controllers\Api\RegistroAulaController;
 use App\Http\Controllers\Api\ResponsavelController;
 use Illuminate\Support\Facades\Route;
+
+// Equivalente a api/auth/login.php — sem middleware, é o próprio ponto de entrada.
+Route::post('/auth/login', [AuthController::class, 'login']);
 
 Route::prefix('agent')->middleware('max.jwt')->group(function () {
     Route::post('/chat', [MaxAgentController::class, 'chat']);
