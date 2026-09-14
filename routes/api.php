@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AlunoController;
 use App\Http\Controllers\Api\AvaliacaoController;
 use App\Http\Controllers\Api\DocumentoController;
 use App\Http\Controllers\Api\FrequenciaController;
@@ -9,6 +10,7 @@ use App\Http\Controllers\Api\MaxUsageController;
 use App\Http\Controllers\Api\NotaController;
 use App\Http\Controllers\Api\ProfessorController;
 use App\Http\Controllers\Api\RegistroAulaController;
+use App\Http\Controllers\Api\ResponsavelController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('agent')->middleware('max.jwt')->group(function () {
@@ -88,4 +90,27 @@ Route::prefix('professores')->middleware('max.jwt')->group(function () {
     Route::get('/frequencia-por-turma', [ProfessorController::class, 'frequenciaPorTurma']);
     Route::get('/historico-frequencia', [ProfessorController::class, 'historicoFrequencia']);
     Route::post('/frequencia', [ProfessorController::class, 'salvarFrequencia']);
+});
+
+// Equivalente a api/alunos/*.php. Atenção: setFoto/deleteFoto gravam no disco
+// local do Laravel, mas a foto_url exibida no front sempre aponta pro domínio
+// de produção — upload local não fica visível até este backend estar no ar
+// nesse domínio (ver comentário em AlunoController::setFoto()).
+Route::prefix('alunos')->middleware('max.jwt')->group(function () {
+    Route::get('/', [AlunoController::class, 'index']);
+    Route::post('/', [AlunoController::class, 'store']);
+    Route::post('/inativar', [AlunoController::class, 'inativar']);
+    Route::get('/boletim', [AlunoController::class, 'boletim']);
+    Route::get('/boletim-turma', [AlunoController::class, 'boletimTurma']);
+    Route::post('/foto', [AlunoController::class, 'setFoto']);
+    Route::post('/foto/remover', [AlunoController::class, 'deleteFoto']);
+});
+
+// Equivalente a api/responsaveis/*.php.
+Route::prefix('responsaveis')->middleware('max.jwt')->group(function () {
+    Route::get('/', [ResponsavelController::class, 'index']);
+    Route::post('/', [ResponsavelController::class, 'store']);
+    Route::post('/atualizar', [ResponsavelController::class, 'update']);
+    Route::get('/dependentes', [ResponsavelController::class, 'dependentes']);
+    Route::get('/por-aluno', [ResponsavelController::class, 'responsaveisPorAluno']);
 });
