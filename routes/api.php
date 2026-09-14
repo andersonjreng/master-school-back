@@ -2,13 +2,19 @@
 
 use App\Http\Controllers\Api\AlunoController;
 use App\Http\Controllers\Api\AvaliacaoController;
+use App\Http\Controllers\Api\DescontoPadraoController;
 use App\Http\Controllers\Api\DocumentoController;
+use App\Http\Controllers\Api\FinanceiroController;
 use App\Http\Controllers\Api\FrequenciaController;
+use App\Http\Controllers\Api\MatriculaFinanceiraController;
 use App\Http\Controllers\Api\MaxAgentController;
 use App\Http\Controllers\Api\MaxConversaController;
 use App\Http\Controllers\Api\MaxUsageController;
 use App\Http\Controllers\Api\NotaController;
+use App\Http\Controllers\Api\ParcelaController;
+use App\Http\Controllers\Api\PlanoPagamentoController;
 use App\Http\Controllers\Api\ProfessorController;
+use App\Http\Controllers\Api\ReciboController;
 use App\Http\Controllers\Api\RegistroAulaController;
 use App\Http\Controllers\Api\ResponsavelController;
 use Illuminate\Support\Facades\Route;
@@ -113,4 +119,43 @@ Route::prefix('responsaveis')->middleware('max.jwt')->group(function () {
     Route::post('/atualizar', [ResponsavelController::class, 'update']);
     Route::get('/dependentes', [ResponsavelController::class, 'dependentes']);
     Route::get('/por-aluno', [ResponsavelController::class, 'responsaveisPorAluno']);
+});
+
+// Equivalente a api/financeiro/*.php, EXCETO api/financeiro/convenio/*.php (boleto
+// bancário Sicoob — remessa/retorno CNAB, boleto visual — fica pra uma etapa
+// separada, é um sub-módulo distinto e mais arriscado).
+Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
+    // Recibo tem regra de acesso própria (admin/diretoria vê tudo, responsável só
+    // os recibos dos próprios dependentes) — não cabe num único max.role.
+    Route::get('/recibos', [ReciboController::class, 'index']);
+
+    Route::middleware('max.role:Responsável')->group(function () {
+        Route::get('/minhas-parcelas', [ParcelaController::class, 'minhasParcelas']);
+    });
+
+    Route::middleware('max.role:Administrador,Diretoria')->group(function () {
+        Route::get('/configuracoes', [FinanceiroController::class, 'configuracoes']);
+        Route::get('/dashboard', [FinanceiroController::class, 'dashboard']);
+
+        Route::get('/planos', [PlanoPagamentoController::class, 'index']);
+        Route::post('/planos', [PlanoPagamentoController::class, 'store']);
+        Route::put('/planos', [PlanoPagamentoController::class, 'update']);
+        Route::delete('/planos', [PlanoPagamentoController::class, 'destroy']);
+
+        Route::get('/descontos', [DescontoPadraoController::class, 'index']);
+        Route::post('/descontos', [DescontoPadraoController::class, 'store']);
+        Route::put('/descontos', [DescontoPadraoController::class, 'update']);
+
+        Route::get('/matriculas/alunos-turma', [MatriculaFinanceiraController::class, 'alunosTurmaMatricula']);
+        Route::get('/matriculas', [MatriculaFinanceiraController::class, 'index']);
+        Route::post('/matriculas', [MatriculaFinanceiraController::class, 'store']);
+        Route::post('/matriculas/lote', [MatriculaFinanceiraController::class, 'storeLote']);
+        Route::post('/matriculas/cancelar', [MatriculaFinanceiraController::class, 'cancelar']);
+
+        Route::get('/parcelas', [ParcelaController::class, 'contasReceber']);
+        Route::post('/parcelas/baixa', [ParcelaController::class, 'baixa']);
+        Route::put('/parcelas', [ParcelaController::class, 'update']);
+        Route::post('/parcelas/renegociar', [ParcelaController::class, 'renegociar']);
+        Route::get('/inadimplencia', [ParcelaController::class, 'inadimplencia']);
+    });
 });
