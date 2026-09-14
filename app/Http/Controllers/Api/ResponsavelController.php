@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\AlunoResponsavelVinculoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,10 @@ use Illuminate\Support\Facades\Hash;
 class ResponsavelController extends Controller
 {
     private const FOTO_BASE_URL = 'https://portalmasterschool.com.br/cepelc/api/';
+
+    public function __construct(private AlunoResponsavelVinculoService $vinculos)
+    {
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -296,5 +301,50 @@ class ResponsavelController extends Controller
             'count'    => count($responsaveis),
             'data'     => $responsaveis,
         ]);
+    }
+
+    /**
+     * Equivalente a api/admin/post_aluno_responsavel.php — vincula vários
+     * alunos a UM responsável (payload fixa responsavel_id, varia alunos_ids).
+     */
+    public function vincularAlunos(Request $request): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
+        if (!in_array('Administrador', $funcoes, true)) {
+            return response()->json(['error' => 'Acesso negado. Apenas administradores podem vincular responsáveis a alunos.'], 403);
+        }
+
+        $responsavelId = $request->input('responsavel_id');
+        $alunosIds = $request->input('alunos_ids', []);
+
+        if (!$responsavelId || !is_numeric($responsavelId)) {
+            return response()->json(['error' => 'O ID do responsável (responsavel_id) deve ser fornecido.'], 400);
+        }
+        if (empty($alunosIds) || !is_array($alunosIds)) {
+            return response()->json(['error' => 'A lista de IDs dos alunos (alunos_ids) deve ser fornecida como um array não vazio.'], 400);
+        }
+
+        $alunosIdsValidos = array_values(array_filter($alunosIds, 'is_numeric'));
+        if (empty($alunosIdsValidos)) {
+            return response()->json(['error' => 'Nenhum aluno válido fornecido para vincular.'], 400);
+        }
+
+        [$vinculosCriados, $avisos] = $this->vinculos->criar((int) $responsavelId, $alunosIdsValidos, porResponsavel: true);
+
+        if ($vinculosCriados > 0) {
+            return response()->json([
+                'success' => "$vinculosCriados alunos vinculados ao Responsável ID $responsavelId com sucesso.",
+                'responsavel_id' => (int) $responsavelId,
+                'vinculos_criados' => $vinculosCriados,
+                'total_solicitado' => count($alunosIdsValidos),
+                'avisos' => $avisos,
+            ], 201);
+        }
+        if (!empty($avisos)) {
+            return response()->json(['success' => 'Nenhum novo vínculo criado.', 'responsavel_id' => (int) $responsavelId, 'avisos' => $avisos]);
+        }
+
+        return response()->json(['error' => 'Nenhuma operação válida executada.'], 400);
     }
 }

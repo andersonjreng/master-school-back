@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\AlunoResponsavelVinculoService;
 use App\Services\Financeiro\CancelamentoMatriculaFinanceiraService;
 use App\Services\Sistema\LogSistemaService;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +23,7 @@ class AlunoController extends Controller
     public function __construct(
         private LogSistemaService $log,
         private CancelamentoMatriculaFinanceiraService $cancelamentoFinanceiro,
+        private AlunoResponsavelVinculoService $vinculos,
     ) {
     }
 
@@ -504,5 +506,114 @@ class AlunoController extends Controller
         }
 
         return response()->json(['success' => 'Foto removida com sucesso.']);
+    }
+
+    /**
+     * Equivalente a api/admin/update_aluno.php — edição administrativa (nome,
+     * email, matrícula, data de nascimento, endereço, status_matricula).
+     * Diferente de inativar(): aqui é edição livre de campos, sem as regras de
+     * negócio de encerramento de matrícula/financeiro.
+     */
+    public function update(Request $request): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
+        if (!in_array('Administrador', $funcoes, true)) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
+
+        $alunoId = $request->input('aluno_id');
+        if (!$alunoId) {
+            return response()->json(['error' => 'O campo aluno_id é obrigatório para editar.'], 400);
+        }
+
+        $usuarioId = DB::table('alunos')->where('id', $alunoId)->value('usuario_id');
+        if (!$usuarioId) {
+            return response()->json(['error' => "Aluno ID $alunoId não encontrado no sistema."], 500);
+        }
+
+        $camposUsuario = [];
+        // Aceita 'nome_aluno' (payload histórico do front) ou 'nome_completo'.
+        $novoNome = $request->input('nome_aluno', $request->input('nome_completo'));
+        if ($novoNome !== null) {
+            $camposUsuario['nome_completo'] = $novoNome;
+        }
+        if ($request->has('email')) {
+            $camposUsuario['email'] = $request->input('email');
+        }
+
+        $camposAluno = [];
+        foreach (['matricula', 'data_nascimento', 'endereco', 'status_matricula'] as $campo) {
+            if ($request->has($campo)) {
+                $camposAluno[$campo] = $request->input($campo);
+            }
+        }
+
+        $mudouAlgo = false;
+        try {
+            DB::transaction(function () use ($camposUsuario, $camposAluno, $usuarioId, $alunoId, &$mudouAlgo) {
+                if (!empty($camposUsuario)) {
+                    DB::table('usuarios')->where('id', $usuarioId)->update($camposUsuario);
+                    $mudouAlgo = true;
+                }
+                if (!empty($camposAluno)) {
+                    DB::table('alunos')->where('id', $alunoId)->update($camposAluno);
+                    $mudouAlgo = true;
+                }
+            });
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'Erro ao atualizar', 'message' => $e->getMessage()], 500);
+        }
+
+        if ($mudouAlgo) {
+            return response()->json(['success' => 'Dados do aluno atualizados com sucesso.']);
+        }
+
+        return response()->json(['info' => 'Nenhuma alteração foi necessária.']);
+    }
+
+    /**
+     * Equivalente a api/admin/post_responsavel_aluno.php — vincula vários
+     * responsáveis a UM aluno (payload fixa aluno_id, varia responsaveis_ids).
+     */
+    public function vincularResponsaveis(Request $request): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
+        if (!in_array('Administrador', $funcoes, true)) {
+            return response()->json(['error' => 'Acesso negado. Apenas administradores podem vincular responsáveis a alunos.'], 403);
+        }
+
+        $alunoId = $request->input('aluno_id');
+        $responsaveisIds = $request->input('responsaveis_ids', []);
+
+        if (!$alunoId || !is_numeric($alunoId)) {
+            return response()->json(['error' => 'O ID do aluno (aluno_id) deve ser fornecido.'], 400);
+        }
+        if (empty($responsaveisIds) || !is_array($responsaveisIds)) {
+            return response()->json(['error' => 'A lista de IDs dos responsáveis (responsaveis_ids) deve ser fornecida como um array não vazio.'], 400);
+        }
+
+        $responsaveisIdsValidos = array_values(array_filter($responsaveisIds, 'is_numeric'));
+        if (empty($responsaveisIdsValidos)) {
+            return response()->json(['error' => 'Nenhum ID de responsável válido fornecido para vincular.'], 400);
+        }
+
+        [$vinculosCriados, $avisos] = $this->vinculos->criar((int) $alunoId, $responsaveisIdsValidos, porResponsavel: false);
+
+        if ($vinculosCriados > 0) {
+            return response()->json([
+                'success' => "$vinculosCriados responsáveis vinculados ao Aluno ID $alunoId com sucesso.",
+                'aluno_id' => (int) $alunoId,
+                'vinculos_criados' => $vinculosCriados,
+                'total_solicitado' => count($responsaveisIdsValidos),
+                'avisos' => $avisos,
+            ], 201);
+        }
+        if (!empty($avisos)) {
+            return response()->json(['success' => 'Nenhum novo vínculo criado.', 'aluno_id' => (int) $alunoId, 'avisos' => $avisos]);
+        }
+
+        return response()->json(['error' => 'Nenhuma operação válida executada.'], 400);
     }
 }

@@ -7,10 +7,12 @@ use App\Http\Controllers\Api\DescontoPadraoController;
 use App\Http\Controllers\Api\DocumentoController;
 use App\Http\Controllers\Api\FinanceiroController;
 use App\Http\Controllers\Api\FrequenciaController;
+use App\Http\Controllers\Api\LogController;
 use App\Http\Controllers\Api\MatriculaFinanceiraController;
 use App\Http\Controllers\Api\MaxAgentController;
 use App\Http\Controllers\Api\MaxConversaController;
 use App\Http\Controllers\Api\MaxUsageController;
+use App\Http\Controllers\Api\MetadadoController;
 use App\Http\Controllers\Api\NotaController;
 use App\Http\Controllers\Api\NotificacaoWhatsappController;
 use App\Http\Controllers\Api\ParcelaController;
@@ -19,6 +21,9 @@ use App\Http\Controllers\Api\ProfessorController;
 use App\Http\Controllers\Api\ReciboController;
 use App\Http\Controllers\Api\RegistroAulaController;
 use App\Http\Controllers\Api\ResponsavelController;
+use App\Http\Controllers\Api\TurmaController;
+use App\Http\Controllers\Api\UsuarioController;
+use App\Http\Controllers\Api\VinculoProfessorTurmaDisciplinaController;
 use Illuminate\Support\Facades\Route;
 
 // Equivalente a api/auth/login.php — sem middleware, é o próprio ponto de entrada.
@@ -110,11 +115,13 @@ Route::prefix('professores')->middleware('max.jwt')->group(function () {
 Route::prefix('alunos')->middleware('max.jwt')->group(function () {
     Route::get('/', [AlunoController::class, 'index']);
     Route::post('/', [AlunoController::class, 'store']);
+    Route::put('/', [AlunoController::class, 'update']);
     Route::post('/inativar', [AlunoController::class, 'inativar']);
     Route::get('/boletim', [AlunoController::class, 'boletim']);
     Route::get('/boletim-turma', [AlunoController::class, 'boletimTurma']);
     Route::post('/foto', [AlunoController::class, 'setFoto']);
     Route::post('/foto/remover', [AlunoController::class, 'deleteFoto']);
+    Route::post('/vincular-responsaveis', [AlunoController::class, 'vincularResponsaveis']);
 });
 
 // Equivalente a api/responsaveis/*.php.
@@ -124,6 +131,7 @@ Route::prefix('responsaveis')->middleware('max.jwt')->group(function () {
     Route::post('/atualizar', [ResponsavelController::class, 'update']);
     Route::get('/dependentes', [ResponsavelController::class, 'dependentes']);
     Route::get('/por-aluno', [ResponsavelController::class, 'responsaveisPorAluno']);
+    Route::post('/vincular-alunos', [ResponsavelController::class, 'vincularAlunos']);
 });
 
 // Equivalente a api/financeiro/*.php, EXCETO api/financeiro/convenio/*.php (boleto
@@ -171,4 +179,43 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
 Route::prefix('whatsapp')->middleware(['max.jwt', 'max.role:Administrador'])->group(function () {
     Route::post('/testar', [NotificacaoWhatsappController::class, 'testar']);
     Route::get('/historico', [NotificacaoWhatsappController::class, 'historico']);
+});
+
+// Equivalente a api/admin/*.php (exceto get_disciplinas_por_turma.php — dead
+// code, sem nenhum uso no frontend).
+//
+// Fix vs. legado: get_alunos_por_turma_chart.php e get_ocupacao_turma.php não
+// tinham NENHUMA validação de JWT (endpoints completamente públicos) — aqui
+// ganharam o mesmo nível de acesso de get_turmas_detalhes (Administrador,
+// Diretoria, Professor), já que exibem dados agregados da mesma natureza.
+Route::prefix('admin')->middleware('max.jwt')->group(function () {
+    Route::get('/anos-letivos', [MetadadoController::class, 'anosLetivos']);
+    Route::get('/disciplinas', [MetadadoController::class, 'disciplinas']);
+    Route::get('/sistemas-avaliacao', [MetadadoController::class, 'sistemasAvaliacao']);
+
+    Route::middleware('max.role:Administrador,Diretoria,Professor')->group(function () {
+        Route::get('/turmas', [TurmaController::class, 'index']);
+        Route::get('/turmas/alunos-por-turma-chart', [TurmaController::class, 'alunosPorTurmaChart']);
+        Route::get('/turmas/ocupacao', [TurmaController::class, 'ocupacao']);
+    });
+
+    Route::middleware('max.role:Administrador')->group(function () {
+        Route::get('/logs', [LogController::class, 'index']);
+
+        Route::get('/usuarios', [UsuarioController::class, 'index']);
+        Route::post('/usuarios', [UsuarioController::class, 'store']);
+        Route::put('/usuarios', [UsuarioController::class, 'update']);
+        Route::patch('/usuarios/status', [UsuarioController::class, 'patchStatus']);
+
+        Route::post('/turmas', [TurmaController::class, 'store']);
+        Route::put('/turmas', [TurmaController::class, 'update']);
+        Route::patch('/turmas/status', [TurmaController::class, 'updateStatus']);
+        Route::post('/turmas/vincular-alunos', [TurmaController::class, 'vincularAlunos']);
+        Route::post('/turmas/promover-alunos', [TurmaController::class, 'promoverAlunos']);
+        Route::post('/turmas/transferir-aluno', [TurmaController::class, 'transferirAluno']);
+
+        Route::post('/vinculos-turma', [VinculoProfessorTurmaDisciplinaController::class, 'porTurma']);
+        Route::post('/vinculos-professor', [VinculoProfessorTurmaDisciplinaController::class, 'porProfessor']);
+        Route::delete('/vinculos', [VinculoProfessorTurmaDisciplinaController::class, 'destroy']);
+    });
 });
