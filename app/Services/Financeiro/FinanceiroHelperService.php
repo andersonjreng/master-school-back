@@ -169,6 +169,26 @@ class FinanceiroHelperService
     }
 
     /**
+     * Busca o responsável "pagador" de um aluno pra fins de emissão de boleto —
+     * o principal, ou o primeiro vinculado se não houver principal marcado.
+     * Reaproveitado pelo gerador de remessa e pelo gerador do boleto visual
+     * (ambos em App\Services\Financeiro\Sicoob\*).
+     */
+    public function buscarResponsavelPagador(int $alunoId): ?array
+    {
+        $responsavel = DB::table('responsaveis as r')
+            ->join('aluno_responsavel as ar', 'r.id', '=', 'ar.responsavel_id')
+            ->join('usuarios as u', 'r.usuario_id', '=', 'u.id')
+            ->where('ar.aluno_id', $alunoId)
+            ->orderByDesc('ar.principal')
+            ->orderBy('r.id')
+            ->limit(1)
+            ->first(['r.id', 'r.cpf', 'r.endereco', 'r.bairro', 'r.cidade', 'r.uf', 'r.cep', 'u.nome_completo']);
+
+        return $responsavel ? (array) $responsavel : null;
+    }
+
+    /**
      * Distribui o valor efetivamente pago entre principal, multa e juros, na ordem
      * principal > multa > juros. Garante que a soma das 3 partes seja sempre igual
      * a $valorPago — se o valor pago for menor que o esperado (ex.: encargo

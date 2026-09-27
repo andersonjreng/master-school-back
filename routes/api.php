@@ -3,8 +3,12 @@
 use App\Http\Controllers\Api\AlunoController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AvaliacaoController;
+use App\Http\Controllers\Api\BnccController;
+use App\Http\Controllers\Api\BoletoSicoobController;
+use App\Http\Controllers\Api\ConvenioCobrancaController;
 use App\Http\Controllers\Api\DescontoPadraoController;
 use App\Http\Controllers\Api\DocumentoController;
+use App\Http\Controllers\Api\EscolaConfigController;
 use App\Http\Controllers\Api\FinanceiroController;
 use App\Http\Controllers\Api\FrequenciaController;
 use App\Http\Controllers\Api\LogController;
@@ -134,9 +138,8 @@ Route::prefix('responsaveis')->middleware('max.jwt')->group(function () {
     Route::post('/vincular-alunos', [ResponsavelController::class, 'vincularAlunos']);
 });
 
-// Equivalente a api/financeiro/*.php, EXCETO api/financeiro/convenio/*.php (boleto
-// bancário Sicoob — remessa/retorno CNAB, boleto visual — fica pra uma etapa
-// separada, é um sub-módulo distinto e mais arriscado).
+// Equivalente a api/financeiro/*.php, incluindo api/financeiro/convenio/*.php
+// (boleto bancário Sicoob — remessa/retorno CNAB, boleto visual).
 Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
     // Recibo tem regra de acesso própria (admin/diretoria vê tudo, responsável só
     // os recibos dos próprios dependentes) — não cabe num único max.role.
@@ -170,6 +173,17 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
         Route::put('/parcelas', [ParcelaController::class, 'update']);
         Route::post('/parcelas/renegociar', [ParcelaController::class, 'renegociar']);
         Route::get('/inadimplencia', [ParcelaController::class, 'inadimplencia']);
+
+        Route::get('/convenio/boleto-html', [BoletoSicoobController::class, 'boletoHtml']);
+        Route::post('/convenio/gerar-remessa', [BoletoSicoobController::class, 'gerarRemessa']);
+        Route::post('/convenio/importar-retorno', [BoletoSicoobController::class, 'importarRetorno']);
+    });
+
+    // Convênio bancário (cadastro dos dados do cedente) é exclusivo de
+    // Administrador no legado — mais restrito que o resto do sub-módulo.
+    Route::middleware('max.role:Administrador')->group(function () {
+        Route::get('/convenio', [ConvenioCobrancaController::class, 'index']);
+        Route::post('/convenio', [ConvenioCobrancaController::class, 'store']);
     });
 });
 
@@ -218,4 +232,24 @@ Route::prefix('admin')->middleware('max.jwt')->group(function () {
         Route::post('/vinculos-professor', [VinculoProfessorTurmaDisciplinaController::class, 'porProfessor']);
         Route::delete('/vinculos', [VinculoProfessorTurmaDisciplinaController::class, 'destroy']);
     });
+});
+
+// Equivalente a api/bncc/*.php — avaliação de educação infantil por
+// habilidades da BNCC. Papéis mistos (admin/professor/responsável com
+// escopo próprio) tratados dentro do controller, não cabem num único
+// max.role.
+Route::prefix('bncc')->middleware('max.jwt')->group(function () {
+    Route::get('/semestres', [BnccController::class, 'semestres']);
+    Route::get('/habilidades', [BnccController::class, 'habilidades']);
+    Route::get('/status-alunos', [BnccController::class, 'statusAlunos']);
+    Route::get('/registros-aluno', [BnccController::class, 'registrosAluno']);
+    Route::post('/registros', [BnccController::class, 'storeRegistros']);
+});
+
+// Equivalente a api/escola/*.php.
+Route::prefix('escola')->middleware('max.jwt')->group(function () {
+    Route::get('/configuracoes', [EscolaConfigController::class, 'index']);
+    Route::post('/configuracoes', [EscolaConfigController::class, 'update']);
+    Route::post('/logo', [EscolaConfigController::class, 'setLogo']);
+    Route::post('/logo/remover', [EscolaConfigController::class, 'deleteLogo']);
 });
