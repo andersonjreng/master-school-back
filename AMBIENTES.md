@@ -239,26 +239,45 @@ mesma origem, sem precisar de CORS entre eles.
   pasta pública (abordagem inicialmente cogitada, mas `Alias` não é permitido
   em `.htaccess` e reescrever pra um caminho fora do Document Root é frágil
   em mod_rewrite). Em vez disso, **symlinks** dentro de `teste-front/`:
-  - `teste-front/api -> laravel-deploy/public`
+  - `teste-front/backend -> laravel-deploy/public`
   - `teste-front/storage -> laravel-deploy/public/storage`
   Isso funciona porque o `.htaccess` do próprio Laravel (dentro de
   `laravel-deploy/public/`) continua sendo aplicado normalmente pelo Apache
   ao percorrer o link simbólico (mesmo dono do link e do alvo, então
   `FollowSymLinks`/`SymLinksIfOwnerMatch` não bloqueia).
-- `.htaccess` na raiz de `teste-front/` só precisa de duas coisas: deixar
-  `/api` e `/storage` passarem direto (sem cair no fallback do Angular) e o
-  fallback padrão de SPA pro resto:
+- ⚠️ **Bug real encontrado e corrigido**: a primeira tentativa nomeou o
+  symlink de `api` (nome óbvio, mas errado) e deu 404 em toda rota
+  (`"The route auth/login could not be found."`). Causa: o Laravel já
+  registra `routes/api.php` com prefixo `/api` automaticamente
+  (`withRouting(api: ...)` em `bootstrap/app.php`). Quando o symlink também
+  se chama `api`, o Apache monta `SCRIPT_NAME=/api/index.php` ao executar o
+  `index.php` através dele, e o Symfony (usado por baixo do Laravel) calcula
+  o `baseUrl` da requisição comparando `REQUEST_URI` com o diretório de
+  `SCRIPT_NAME` — encontra `/api` nos dois e **descarta esse prefixo do
+  path antes do roteador do Laravel ver a requisição**, sobrando só
+  `auth/login`, que não bate com nenhuma rota registrada (que espera
+  `api/auth/login`). Corrigido nomeando o symlink como `backend` (qualquer
+  nome que não apareça literalmente na URL resolve — o importante é o
+  `SCRIPT_NAME` não compartilhar prefixo com o `REQUEST_URI`) e reescrevendo
+  `/api/*` pra ele no `.htaccess` do front, em vez de deixar a URL bater
+  direto no symlink.
+- `.htaccess` na raiz de `teste-front/`:
   ```apache
   RewriteEngine On
-  RewriteRule ^(api|storage)($|/) - [L]
 
+  # /api/* -> Laravel via symlink 'backend' (ver nota do bug acima: NAO
+  # pode se chamar 'api', colide com o prefixo interno de rota do Laravel)
+  RewriteRule ^api/(.*)$ backend/$1 [L]
+
+  # /storage/* -> arquivos estaticos do Laravel (nao passa por PHP, sem o
+  # problema de SCRIPT_NAME acima)
+  RewriteRule ^storage/(.*)$ storage/$1 [L]
+
+  # Angular SPA fallback
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^ index.html [L]
   ```
-- Como as rotas de `routes/api.php` já são registradas com prefixo `/api`
-  automaticamente pelo Laravel (`withRouting(api: ...)` em
-  `bootstrap/app.php`), não precisou reescrever nada do lado do Laravel.
 - Deploy do build: `ng build` local → `tar -czf` da pasta
   `dist/master-school/browser/` (inclui o `.htaccess` acima) → `scp` do
   tarball único pro servidor → extrair via SSH direto em `teste-front/` (bem
