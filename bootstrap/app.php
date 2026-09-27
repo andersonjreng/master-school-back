@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\RequireRole;
+use App\Http\Middleware\ResolveTenantDatabase;
 use App\Http\Middleware\VerifyLegacyJwt;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -15,6 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Precisa vir antes de qualquer coisa que toque o banco — resolve o
+        // tenant (escola) pelo subdomínio da requisição.
+        $middleware->prepend(ResolveTenantDatabase::class);
+
         $middleware->alias([
             'max.jwt'  => VerifyLegacyJwt::class,
             'max.role' => RequireRole::class,
