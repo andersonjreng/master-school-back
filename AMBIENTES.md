@@ -86,7 +86,10 @@ Migrados: Max (agente de IA), Documentos, Frequência, Registros de Aula,
 Avaliações, Professores, Alunos/Responsáveis, Financeiro (núcleo + boleto
 Sicoob), Auth, WhatsApp (testar/histórico + cron diário), Admin, BNCC,
 Escola (leitura + escrita). **Backend com paridade completa** em relação a
-tudo que o frontend Angular usa.
+tudo que o frontend Angular usa. **Front (Angular) já em produção** dividindo
+subdomínio com o back em `teste.portalmasterschool.com.br` (ver seção "Front
++ back no mesmo subdomínio" abaixo) — `cepelc` e `criarte` ainda não migrados
+pra esse esquema.
 
 ### Cron diário do WhatsApp (`whatsapp:notificacoes-diarias`)
 
@@ -206,10 +209,10 @@ chave de teste/produção por enquanto).
 
 ### Subdomínios (cPanel → Domínios/Subdomínios)
 
-Cada escola ganha um subdomínio próprio, Document Root apontando pra
-`laravel-deploy/public` (backend) — **decisão em andamento**: o front
-(Angular) vai passar a dividir o mesmo subdomínio que o backend (ver seção
-abaixo), em vez do padrão atual de pasta (`portalmasterschool.com.br/cepelc/`).
+Cada escola ganha um subdomínio próprio. Front e back dividem o mesmo
+subdomínio (ver seção abaixo), em vez do padrão antigo de pasta
+(`portalmasterschool.com.br/cepelc/`). O `teste.portalmasterschool.com.br`
+já está assim (Document Root em `teste-front/`, ver detalhes abaixo).
 
 ⚠️ A interface nova e unificada de "Domínios" do cPanel tem um bug ao tentar
 excluir um subdomínio criado com Document Root errado (erro de domínio
@@ -220,20 +223,57 @@ AutoSSL do cPanel demora um pouco (minutos a horas) pra emitir certificado
 pra um subdomínio recém-criado — um erro de SSL/SNI logo depois de criar é
 esperado, não é bug.
 
-### Front + back no mesmo subdomínio (planejado, ainda não implementado)
+### Front + back no mesmo subdomínio (implementado em `teste`, 2026-09-27)
 
 Decisão: cada escola tem um subdomínio só, servindo front e back juntos —
 mesma origem, sem precisar de CORS entre eles.
 
+**Como ficou (testado e funcionando em `teste.portalmasterschool.com.br`)**:
+
 - Document Root do subdomínio aponta pra uma pasta só com o **build do
-  Angular** (não mais direto pro `laravel-deploy/public`).
-- Um `.htaccess` nessa pasta redireciona `/api/*` pro
-  `laravel-deploy/public/index.php` (caminho absoluto, fora da pasta
-  pública) via `mod_rewrite`; o resto cai no fallback padrão de SPA do
-  Angular (serve o arquivo se existir, senão `index.html`).
+  Angular** (`teste-front/`), trocado via
+  `uapi SubDomain changedocroot domain=<subdominio> docroot=<pasta>`
+  (o parâmetro certo é `docroot`, não `dir` — `uapi --help` lista errado/
+  incompleto, só o erro de "Provide the docroot argument" revela o nome certo).
+- **Não** usamos `mod_rewrite` pra apontar pra um caminho absoluto fora da
+  pasta pública (abordagem inicialmente cogitada, mas `Alias` não é permitido
+  em `.htaccess` e reescrever pra um caminho fora do Document Root é frágil
+  em mod_rewrite). Em vez disso, **symlinks** dentro de `teste-front/`:
+  - `teste-front/api -> laravel-deploy/public`
+  - `teste-front/storage -> laravel-deploy/public/storage`
+  Isso funciona porque o `.htaccess` do próprio Laravel (dentro de
+  `laravel-deploy/public/`) continua sendo aplicado normalmente pelo Apache
+  ao percorrer o link simbólico (mesmo dono do link e do alvo, então
+  `FollowSymLinks`/`SymLinksIfOwnerMatch` não bloqueia).
+- `.htaccess` na raiz de `teste-front/` só precisa de duas coisas: deixar
+  `/api` e `/storage` passarem direto (sem cair no fallback do Angular) e o
+  fallback padrão de SPA pro resto:
+  ```apache
+  RewriteEngine On
+  RewriteRule ^(api|storage)($|/) - [L]
+
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [L]
+  ```
 - Como as rotas de `routes/api.php` já são registradas com prefixo `/api`
   automaticamente pelo Laravel (`withRouting(api: ...)` em
-  `bootstrap/app.php`), não precisa reescrever nada do lado do Laravel.
+  `bootstrap/app.php`), não precisou reescrever nada do lado do Laravel.
+- Deploy do build: `ng build` local → `tar -czf` da pasta
+  `dist/master-school/browser/` (inclui o `.htaccess` acima) → `scp` do
+  tarball único pro servidor → extrair via SSH direto em `teste-front/` (bem
+  mais confiável que `scp -r` arquivo por arquivo, dado que a conexão SSH
+  deste servidor cai com frequência — ver nota abaixo).
+
+⚠️ **SSH desse servidor (br48.hostgator.com.br) cai com frequência** —
+não é específico de nenhum comando (confirmado testando `echo` puro em
+sequência: ~metade das conexões fecha com "Connection closed by ... port
+22" ou às vezes "Connection refused"). Não é rate-limit óbvio (não piora com
+mais tentativas nem melhora com espera). Mitigação: sempre envolver comandos
+remotos importantes num laço de retry (3-6 tentativas, alguns segundos de
+intervalo) e, pra transferência de arquivos, preferir um único `tar.gz` via
+`scp` + extração remota (com verificação de tamanho do arquivo antes de
+seguir) em vez de `scp -r`/`rsync` de muitos arquivos pequenos.
 
 ## Achados de portabilidade (schema mais estrito localmente que em produção)
 
