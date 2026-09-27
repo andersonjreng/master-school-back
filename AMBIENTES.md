@@ -261,11 +261,48 @@ mesma origem, sem precisar de CORS entre eles.
   `SCRIPT_NAME` não compartilhar prefixo com o `REQUEST_URI`) e reescrevendo
   `/api/*` pra ele no `.htaccess` do front, em vez de deixar a URL bater
   direto no symlink.
-- `.htaccess` na raiz de `teste-front/`:
+- ⚠️ **2º bug real encontrado e corrigido, mais sutil**: depois do bug acima
+  corrigido, login funcionava mas `alunos`/`professores`/`responsaveis`
+  (e por extensão qualquer módulo que segue o mesmo padrão de service)
+  continuavam dando `"The route alunos could not be found."` **só em
+  produção**, mesmo com a rota certa. Causa: o `aluno.service.ts` (e outros)
+  chamava a API com uma **barra final solta** (`` `${alunosApiUrl}/` ``),
+  hábito que nunca deu problema no dev local (Octane não usa Apache/
+  `.htaccess`) mas em produção cai no redirect padrão "remove trailing
+  slash" do próprio `.htaccess` do Laravel — que, por causa do symlink
+  `backend`, redirecionava pra `/backend/alunos` (nome interno vazando na
+  URL) em vez de `/api/alunos`, e essa URL vazada não batia com nenhuma
+  rota. Pior: em `POST`/`PUT`, um redirect 301 é convertido pelo **navegador**
+  em `GET` automaticamente, derrubando o body inteiro — ou seja, mesmo
+  corrigindo só o redirect, criar/editar aluno continuaria quebrado
+  silenciosamente (o front acharia que deu certo, mas teria batido no
+  endpoint de listagem, não no de criação). Corrigido em duas frentes:
+  1. **Raiz do problema**: removida a barra final solta em todas as 12
+     chamadas afetadas (`aluno.service.ts`, `professor.service.ts`,
+     `responsavel.service.ts`, `avaliacao.service.ts`,
+     `frequencia.service.ts`) — as rotas do Laravel nunca a exigiram.
+  2. **Rede de segurança** no `.htaccess`: o redirect de barra final só
+     acontece pra `GET` (nunca pra `POST`/`PUT`/`DELETE`, que agora dão 404
+     limpo em vez de silenciosamente virar outro request), e usa o path
+     *original* (`/api/%1`) em vez de deixar o `.htaccess` do Laravel gerar
+     o redirect (que vazaria `backend/`).
+- `.htaccess` na raiz de `teste-front/` (versão final, com as duas
+  correções acima):
   ```apache
   RewriteEngine On
 
-  # /api/* -> Laravel via symlink 'backend' (ver nota do bug acima: NAO
+  # Normaliza barra final ANTES de repassar pro Laravel (so em GET: um 301
+  # em POST/PUT vira GET no navegador e derruba o body silenciosamente).
+  # Sem isso, o .htaccess do Laravel redireciona usando o path JA reescrito
+  # (backend/alunos em vez de api/alunos), vazando o nome interno do
+  # symlink numa URL que nao bate com nenhuma rota. O frontend Angular ja
+  # nao manda mais barra final nessas chamadas — isso aqui e so rede de
+  # seguranca pra qualquer caso futuro.
+  RewriteCond %{REQUEST_METHOD} =GET
+  RewriteCond %{REQUEST_URI} ^/api/(.+)/$
+  RewriteRule ^ /api/%1 [R=301,L]
+
+  # /api/* -> Laravel via symlink 'backend' (ver nota do 1º bug acima: NAO
   # pode se chamar 'api', colide com o prefixo interno de rota do Laravel)
   RewriteRule ^api/(.*)$ backend/$1 [L]
 
@@ -278,6 +315,9 @@ mesma origem, sem precisar de CORS entre eles.
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^ index.html [L]
   ```
+- **Lição pra próximos módulos/telas**: nunca chamar a API com barra final
+  solta (`` `${xApiUrl}/` ``) — sempre `xApiUrl` puro para o endpoint base.
+  Isso é invisível no dev local (Octane) mas quebra em produção (Apache).
 - Deploy do build: `ng build` local → `tar -czf` da pasta
   `dist/master-school/browser/` (inclui o `.htaccess` acima) → `scp` do
   tarball único pro servidor → extrair via SSH direto em `teste-front/` (bem
