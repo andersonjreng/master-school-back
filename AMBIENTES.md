@@ -84,16 +84,27 @@ continuam apontando pro PHP legado em produção
 
 Migrados: Max (agente de IA), Documentos, Frequência, Registros de Aula,
 Avaliações, Professores, Alunos/Responsáveis, Financeiro (núcleo + boleto
-Sicoob), Auth, WhatsApp (testar/histórico), Admin.
+Sicoob), Auth, WhatsApp (testar/histórico + cron diário), Admin, BNCC,
+Escola (leitura + escrita). **Backend com paridade completa** em relação a
+tudo que o frontend Angular usa.
 
-Pendente:
-- **BNCC** (`api/bncc/*.php`) — registro de avaliação por habilidades BNCC.
-- **Escola > configurações** (`api/escola/*.php`) — só o lado leitura foi
-  portado (`EscolaConfigService`); cadastro/edição e upload de logo, não.
-- **Cron diário do WhatsApp** (`api/whatsapp/enviar_notificacoes_diarias.php`)
-  — é multi-tenant "de verdade" no PHP legado (varre 2 bancos fixos via
-  `config.php`), decisão de como isso vira um Schedule do Laravel ainda em
-  aberto.
+### Cron diário do WhatsApp (`whatsapp:notificacoes-diarias`)
+
+Substitui `api/whatsapp/enviar_notificacoes_diarias.php`. Diferente do
+legado (2 bancos fixos hardcoded em `config.php`), itera todo banco
+distinto em `config('tenants.hosts')` (ou seja, escala sozinho conforme
+`cepelc`/`criarte` forem configurados em `TENANT_*_DB`) + o banco padrão
+do `.env`.
+
+Configurar no cPanel → **Cron Jobs** (não precisa do `schedule:run` do
+Laravel nem de rodar a cada minuto — só uma entrada direta, mesmo padrão do
+cron legado):
+
+```
+0 18 * * * php /home2/ande2326/laravel-deploy/artisan whatsapp:notificacoes-diarias >> /home2/ande2326/laravel-deploy/storage/logs/whatsapp-cron.log 2>&1
+```
+
+(horário sugerido: 18h, ajustar conforme a rotina real da escola).
 
 ## Deploy no servidor
 
