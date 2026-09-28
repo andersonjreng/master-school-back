@@ -21,12 +21,27 @@ conforme `config/tenants.php` (alimentado por variáveis `TENANT_*_HOST` /
 configuração especial de tenant.
 
 Escolas conhecidas:
-- **cepelc** — única escola oficialmente em produção hoje. Roda no PHP
-  legado; ainda não migrada pro Laravel em produção.
+- **cepelc** — única escola oficialmente em produção hoje. O **acesso real
+  dos usuários continua 100% no PHP legado**
+  (`portalmasterschool.com.br/cepelc/`), sem nenhuma mudança. Banco real:
+  `ande2326_master_school_db` (não é intuitivo pelo nome — confirmado lendo
+  o `config.php` real em produção, `/home2/ande2326/portalmasterschool.com.br/cepelc/api-teste/config.php`).
+  Desde 2026-09-28 existe também `cepelc.portalmasterschool.com.br`
+  (Laravel+Angular novo, mesmo padrão do `teste`), conectado a esse MESMO
+  banco real — mas é **só um ambiente de teste em paralelo**, pra validar o
+  backend novo com dados reais antes de decidir migrar o acesso de verdade.
+  **Nunca apontar usuários reais pra esse subdomínio sem decisão explícita**
+  — os dois sistemas (legado + Laravel) escrevendo no mesmo banco ao mesmo
+  tempo por usuários diferentes seria arriscado.
 - **teste** — ambiente de testes, mesmo propósito do `portalmasterschool.com.br/teste/api-teste`
   legado. Banco real no servidor: `ande2326_master_school_teste_db`.
-- **criarte** — escola nova, entra em produção ano que vem. Ainda sem
-  hospedagem/banco criados.
+- **criarte** — escola nova, entra em produção ano que vem. Subdomínio
+  `criarte.portalmasterschool.com.br` criado em 2026-09-28 (mesma conta
+  `ande2326`, sem hospedagem separada), banco novo e **vazio**
+  `ande2326_master_school_criarte_db` — schema clonado via `mysqldump
+  --no-data` do banco `teste` (56 tabelas, já com todas as correções de
+  portabilidade aplicadas). **Sem nenhum usuário cadastrado ainda** —
+  ninguém consegue logar até criar um usuário admin inicial nesse banco.
 - **Colégio Batista** — era cliente, não é mais. Ignorar (o código legado
   ainda tem referências a ele em `api/config.php`, mas não precisa suportar).
 
@@ -219,9 +234,19 @@ excluir um subdomínio criado com Document Root errado (erro de domínio
 duplicado). Nesse caso, usar a interface clássica "Subdomínios" (buscar por
 esse nome exato na busca do cPanel) — a exclusão funciona direito por lá.
 
-AutoSSL do cPanel demora um pouco (minutos a horas) pra emitir certificado
-pra um subdomínio recém-criado — um erro de SSL/SNI logo depois de criar é
-esperado, não é bug.
+AutoSSL do cPanel demora um pouco (minutos a horas, às vezes só minutos —
+em 2026-09-28 os subdomínios `cepelc`/`criarte` propagaram em menos de 30min)
+pra emitir certificado pra um subdomínio recém-criado — um erro de SSL/SNI
+logo depois de criar é esperado, não é bug. **A mesma propagação também
+pode se manifestar como um `302` redirecionando pra `/404.html`, inclusive
+por HTTP puro (sem TLS)** — não é só coisa de certificado, é o vhost em si
+ainda não totalmente sincronizado no Apache do servidor. Testar de novo
+depois de esperar; se quiser automatizar a espera, um loop simples
+(`curl -sk -o /dev/null -w "%{http_code}" https://X/ | grep -q 200`) resolve.
+
+Criar via `uapi SubDomain addsubdomain domain=<nome> rootdomain=portalmasterschool.com.br dir=<pasta>`
+(mais confiável que a UI, principalmente com o SSH instável — ver nota
+sobre isso na seção "Front + back no mesmo subdomínio").
 
 ### Front + back no mesmo subdomínio (implementado em `teste`, 2026-09-27)
 
