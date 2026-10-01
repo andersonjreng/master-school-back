@@ -20,6 +20,39 @@ conforme `config/tenants.php` (alimentado por variáveis `TENANT_*_HOST` /
 `.env` normalmente — é por isso que o ambiente local não precisa de nenhuma
 configuração especial de tenant.
 
+⚠️ **Bug grave encontrado e corrigido em 2026-09-30**: o multi-tenant por
+banco **nunca funcionou de verdade em produção**, desde que foi implantado.
+Duas causas, descobertas testando o login real do `criarte` (que só criou
+em 2026-09-28 — por isso não tinha aparecido antes):
+1. **`config/tenants.php` nunca tinha sido enviado ao servidor** em nenhum
+   deploy anterior (os deploys depois do inicial foram sempre parciais —
+   só a pasta `public/`, só o `.env`, só controllers específicos — nunca um
+   redeploy completo do código). `config('tenants.hosts')` retornava `NULL`
+   em produção, então `ResolveTenantDatabase` nunca trocava o banco pra
+   NENHUM host. `teste.portalmasterschool.com.br` só parecia funcionar
+   porque o banco padrão do `.env` (`DB_DATABASE`) já é coincidentemente o
+   mesmo do tenant teste — `cepelc` e `criarte` estavam **caindo
+   silenciosamente no banco de teste** o tempo todo. Corrigido com um
+   redeploy completo (`git archive HEAD | gzip` → `scp` → extrair por cima
+   do deploy existente, sem tocar `.env`/`vendor`/`storage` — nenhum
+   arquivo tracked é removido, só sobrescrito/adicionado) + `php artisan
+   config:clear`. **Lição**: depois de qualquer deploy parcial, não dá pra
+   assumir que o código do servidor está 100% sincronizado com o git — o
+   jeito confiável de verificar é testar o comportamento real (nesse caso,
+   só apareceu testando tenant-switching de verdade pela primeira vez).
+2. **Usuário de banco sem permissão no banco real do cepelc**: mesmo com o
+   tenant resolvendo certo, `ande2326_laravel_app` nunca tinha `GRANT` em
+   `ande2326_master_school_db` (só tinha em teste e no criarte recém-criado)
+   — dava 500 (`Access denied`). Corrigido via `uapi Mysql
+   set_privileges_on_database` (ação sensível, feita só após confirmação
+   explícita do usuário — o modo automático bloqueou a tentativa inicial
+   por ser uma mudança de permissão em banco de produção).
+
+Confirmado depois do fix: `teste` segue dando os mesmos 99 alunos de
+sempre, `criarte` dá 0 (banco genuinamente vazio) e `cepelc` dá 102 (dados
+reais, antes inacessíveis) — os três bancos agora realmente isolados entre
+si.
+
 Escolas conhecidas:
 - **cepelc** — única escola oficialmente em produção hoje. O **acesso real
   dos usuários continua 100% no PHP legado**
@@ -40,8 +73,11 @@ Escolas conhecidas:
   `ande2326`, sem hospedagem separada), banco novo e **vazio**
   `ande2326_master_school_criarte_db` — schema clonado via `mysqldump
   --no-data` do banco `teste` (56 tabelas, já com todas as correções de
-  portabilidade aplicadas). **Sem nenhum usuário cadastrado ainda** —
-  ninguém consegue logar até criar um usuário admin inicial nesse banco.
+  portabilidade aplicadas). Usuário admin inicial criado em 2026-09-30
+  (`admin@criarte.com`, papel Administrador) — login testado e funcionando.
+  As tabelas de referência (`funcoes` etc.) também precisaram ser semeadas
+  manualmente, já que o `--no-data` não traz linhas nem de tabelas de
+  lookup.
 - **Colégio Batista** — era cliente, não é mais. Ignorar (o código legado
   ainda tem referências a ele em `api/config.php`, mas não precisa suportar).
 
