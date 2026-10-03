@@ -1,0 +1,178 @@
+# Deploy manual do backend Laravel para o cPanel (Hostgator).
+#
+# Disparo: GitHub → Actions → "Deploy back (cPanel)" → Run workflow.
+# Um único deploy atende TODAS as escolas (teste, cepelc, criarte): o
+# multi-tenant é por subdomínio, via ResolveTenantDatabase (ver AMBIENTES.md).
+#
+# O que ele faz:
+#   1. Monta o pacote completo do código (redeploy completo, nunca parcial)
+#      com vendor/ de produção, num runner Linux (tar preserva permissões).
+#   2. Envia um único .tar.gz pro servidor e confere o checksum.
+#   3. Faz backup do código atual em ~/deploy-backups (mantém os 5 últimos).
+#   4. Extrai por cima de laravel-deploy/ sem tocar em .env e storage/.
+#   5. Limpa os caches do Laravel e testa o login nos três subdomínios.
+#
+# NÃO roda migrations: com vários bancos (um por escola), migration continua
+# sendo um passo manual e consciente, por enquanto.
+#
+# Secrets necessários (Settings → Secrets and variables → Actions):
+#   SSH_PRIVATE_KEY, SSH_KNOWN_HOSTS, SSH_HOST, SSH_USER, SSH_PORT
+
+name: Deploy back (cPanel)
+
+on:
+  workflow_dispatch:
+    inputs:
+      check_testado:
+        description: "Testei localmente os endpoints que mudaram"
+        type: boolean
+        required: true
+        default: false
+      check_migration:
+        description: "Esta versão não tem migration nova (ou já rodei manualmente)"
+        type: boolean
+        required: true
+        default: false
+      check_env:
+        description: "Se precisa de variável nova no .env, já adicionei no servidor"
+        type: boolean
+        required: true
+        default: false
+
+concurrency:
+  group: deploy-back
+  cancel-in-progress: false
+
+env:
+  REMOTE_APP_DIR: /home2/ande2326/laravel-deploy
+  SMOKE_HOSTS: "teste.portalmasterschool.com.br cepelc.portalmasterschool.com.br criarte.portalmasterschool.com.br"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conferir checklist e branch
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Deploy do back só pode ser feito a partir da main (selecionado: ${{ github.ref_name }})."
+            exit 1
+          fi
+          if [ "${{ inputs.check_testado }}" != "true" ] || [ "${{ inputs.check_migration }}" != "true" ] || [ "${{ inputs.check_env }}" != "true" ]; then
+            echo "::error::Marque todos os itens do checklist antes de fazer o deploy."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Instalar PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer:v2
+
+      - name: Instalar dependências de produção
+        run: composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+
+      - name: Montar pacote
+        run: |
+          mkdir -p ../pacote
+          tar -czf ../pacote/back.tar.gz \
+            --exclude=./.git \
+            --exclude=./.github \
+            --exclude=./tests \
+            --exclude=./node_modules \
+            --exclude=./phpunit.xml \
+            --exclude=./serve-octane.ps1 \
+            --exclude=./.rr.yaml \
+            --exclude=./storage \
+            --exclude=./.env.example \
+            .
+          sha256sum ../pacote/back.tar.gz | cut -d' ' -f1 > ../pacote/back.sha256
+          ls -lh ../pacote
+
+      - name: Configurar SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host deploy
+            HostName ${{ secrets.SSH_HOST }}
+            User ${{ secrets.SSH_USER }}
+            Port ${{ secrets.SSH_PORT }}
+            IdentityFile ~/.ssh/deploy_key
+            ConnectTimeout 20
+            ServerAliveInterval 15
+          EOF
+
+      # O SSH desse servidor derruba ~metade das conexões sem motivo aparente
+      # (ver AMBIENTES.md) — todo passo remoto usa retry.
+      - name: Enviar pacote
+        run: |
+          retry() { n=0; until "$@"; do n=$((n+1)); [ $n -ge 6 ] && return 1; echo "Falhou, tentando de novo ($n/6)..."; sleep 8; done; }
+          retry ssh deploy 'mkdir -p ~/deploy-staging ~/deploy-backups'
+          retry scp ../pacote/back.tar.gz deploy:deploy-staging/back.tar.gz
+          retry ssh deploy "echo '$(cat ../pacote/back.sha256)  deploy-staging/back.tar.gz' | sha256sum -c -"
+
+      - name: Aplicar no servidor
+        run: |
+          retry() { n=0; until "$@"; do n=$((n+1)); [ $n -ge 6 ] && return 1; echo "Falhou, tentando de novo ($n/6)..."; sleep 8; done; }
+          cat > remoto.sh <<'EOF'
+          set -euo pipefail
+          APP="$1"; SHA="$2"
+          STAGING=~/deploy-staging/back
+          cd "$APP"
+
+          php -r 'exit(version_compare(PHP_VERSION, "8.3", "<") ? 1 : 0);' \
+            || { echo "PHP da linha de comando é menor que 8.3: $(php -v | head -1)"; exit 1; }
+
+          # Backup do código atual (sem vendor/storage, que são grandes ou dados).
+          BKP=~/deploy-backups/back-$(date +%Y%m%d-%H%M%S)-${SHA:0:7}.tar.gz
+          tar -czf "$BKP" --exclude=./vendor --exclude=./storage .
+          ls -1t ~/deploy-backups/back-*.tar.gz | tail -n +6 | xargs -r rm -f
+          echo "Backup: $BKP"
+
+          # Extrai num staging e troca o vendor/ com mv (troca quase instantânea).
+          rm -rf "$STAGING" && mkdir -p "$STAGING"
+          tar -xzf ~/deploy-staging/back.tar.gz -C "$STAGING"
+          rm -rf "$APP/vendor.old"
+          [ -d "$APP/vendor" ] && mv "$APP/vendor" "$APP/vendor.old"
+          mv "$STAGING/vendor" "$APP/vendor"
+          cp -a "$STAGING/." "$APP/"
+          # O .tar.gz fica (é sobrescrito no próximo deploy): se a conexão cair
+          # depois daqui, o retry consegue reaplicar do zero.
+          rm -rf "$APP/vendor.old" "$STAGING"
+
+          chmod -R u+rwX,go+rX "$APP/app" "$APP/bootstrap" "$APP/config" "$APP/public" "$APP/routes" "$APP/vendor"
+          chmod -R ug+rwX "$APP/storage" "$APP/bootstrap/cache"
+
+          php artisan config:clear
+          php artisan route:clear
+          php artisan view:clear
+          php artisan --version
+          echo "$SHA" > "$APP/storage/deploy-version.txt"
+          EOF
+          retry ssh deploy "bash -s -- '$REMOTE_APP_DIR' '${{ github.sha }}'" < remoto.sh
+
+      - name: Testar login nos subdomínios
+        run: |
+          falhou=0
+          for h in $SMOKE_HOSTS; do
+            code=$(curl -s -o /tmp/resp.json -w '%{http_code}' --max-time 30 \
+              -X POST "https://$h/api/auth/login" \
+              -H 'Content-Type: application/json' -H 'Accept: application/json' -d '{}')
+            echo "$h → HTTP $code: $(head -c 200 /tmp/resp.json)"
+            case "$code" in
+              400|401|422) ;;               # Laravel respondeu e recusou login vazio: OK
+              *) echo "::error::$h respondeu HTTP $code"; falhou=1 ;;
+            esac
+          done
+          exit $falhou
+
+      - name: Resumo
+        if: always()
+        run: |
+          echo "### Deploy back — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: \`${{ github.sha }}\` por @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "Backup do código anterior em \`~/deploy-backups\` no servidor." >> $GITHUB_STEP_SUMMARY
