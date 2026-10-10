@@ -39,6 +39,7 @@ class ConvenioCobrancaController extends Controller
             'agencia' => trim((string) $request->input('agencia', '')),
             'agencia_dv' => trim((string) $request->input('agencia_dv', '')) ?: null,
             'conta' => trim((string) $request->input('conta', '')),
+            'conta_dv' => trim((string) $request->input('conta_dv', '')) ?: null,
             'carteira' => trim((string) $request->input('carteira', '')),
             'variacao_carteira' => trim((string) $request->input('variacao_carteira', '')) ?: null,
             'ativo' => (bool) $request->input('ativo', true),

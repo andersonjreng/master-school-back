@@ -56,6 +56,7 @@ class ConvenioCobrancaService
             'agencia' => $dados['agencia'],
             'agencia_dv' => $dados['agencia_dv'],
             'conta' => $dados['conta'],
+            'conta_dv' => $dados['conta_dv'],
             'carteira' => $dados['carteira'],
             'variacao_carteira' => $dados['variacao_carteira'],
             'ativo' => (int) $dados['ativo'],

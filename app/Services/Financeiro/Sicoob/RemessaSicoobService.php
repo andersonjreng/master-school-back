@@ -53,24 +53,30 @@ class RemessaSicoobService
             throw new \Exception('Convênio bancário do Sicoob não está cadastrado/ativo. Cadastre em Financeiro > Convênio Bancário.');
         }
 
+        // Conta corrente + DV vão em todo registro de detalhe (posições 23-31) e
+        // NÃO são derivados do código do cedente (no convênio desta escola:
+        // cedente 164274-0, conta 421945-7) — melhor travar do que mandar um
+        // arquivo pro banco com a conta errada.
+        if (empty($convenio['conta']) || (string) ($convenio['conta_dv'] ?? '') === '') {
+            throw new \Exception('Conta corrente e dígito da conta não cadastrados no convênio — obrigatórios pra remessa. Cadastre em Financeiro > Convênio Bancário.');
+        }
+
         $escola = $this->escolaConfig->obter();
 
         $avisos = [];
-        if (empty($convenio['agencia_dv'])) {
+        if ((string) ($convenio['agencia_dv'] ?? '') === '') {
             $avisos[] = 'Dígito verificador da agência não confirmado — usando "0". Confirme com o gerente antes de usar em produção.';
         }
-        if (empty($convenio['codigo_cedente_dv'])) {
+        if ((string) ($convenio['codigo_cedente_dv'] ?? '') === '') {
             $avisos[] = 'Dígito verificador do código do cedente não confirmado — usando "0".';
-        }
-        if (empty($convenio['conta'])) {
-            $avisos[] = 'Campo "conta" não configurado — usando o código do cedente no lugar (comum em convênios Sicoob, mas não confirmado pro convênio desta escola).';
         }
 
         $agenciaDv = $convenio['agencia_dv'] ?: '0';
         $cedenteDv = $convenio['codigo_cedente_dv'] ?: '0';
-        $conta = $convenio['conta'] ?: $convenio['codigo_cedente'];
+        $conta = $convenio['conta'];
+        $contaDv = $convenio['conta_dv'];
 
-        return DB::transaction(function () use ($convenio, $escola, $parcelaIds, $usuarioId, $avisos, $agenciaDv, $cedenteDv, $conta) {
+        return DB::transaction(function () use ($convenio, $escola, $parcelaIds, $usuarioId, $avisos, $agenciaDv, $cedenteDv, $conta, $contaDv) {
             // Trava a linha do convênio pra alocar nosso_numero sem colisão caso
             // duas remessas sejam geradas ao mesmo tempo.
             $proximoNossoNumero = (int) DB::table('convenios_cobranca_bancaria')
@@ -94,7 +100,7 @@ class RemessaSicoobService
                 'codigo_beneficiario' => $convenio['codigo_cedente'],
                 'codigo_beneficiario_dv' => $cedenteDv,
                 'conta' => $conta,
-                'conta_dv' => $cedenteDv,
+                'conta_dv' => $contaDv,
                 'numero_convenio' => ' ',
                 'tipo_inscricao' => 2, // CNPJ (o beneficiário é sempre a escola, pessoa jurídica)
                 'numero_inscricao' => $this->cnab->apenasDigitos($escola['cnpj']),
