@@ -18,12 +18,12 @@ use Illuminate\Support\Facades\Storage;
 class AlunoController extends Controller
 {
     private const MOTIVOS_VALIDOS = ['transferencia_externa', 'evasao', 'conclusao', 'solicitacao_familia', 'outro'];
-    private const FOTO_BASE_URL = 'https://portalmasterschool.com.br/cepelc/api/';
 
     public function __construct(
         private LogSistemaService $log,
         private CancelamentoMatriculaFinanceiraService $cancelamentoFinanceiro,
         private AlunoResponsavelVinculoService $vinculos,
+        private \App\Services\Cadastro\CadastroValidacaoService $validacao,
     ) {
     }
 
@@ -31,15 +31,16 @@ class AlunoController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem listar todos os alunos.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem listar todos os alunos.'], 403);
         }
 
         $rows = DB::select("
             SELECT
                 a.id AS aluno_id, u.id AS usuario_id, u.nome_completo AS nome_aluno, u.email, u.ativo,
-                u.data_cadastro, a.matricula, a.data_nascimento, a.endereco, a.status_matricula, a.foto_path,
-                t.nome_turma,
+                u.data_cadastro, u.telefone, a.matricula, a.cpf, a.data_nascimento, a.sexo, a.endereco, a.numero, a.complemento,
+                a.bairro, a.cidade, a.uf, a.cep, a.observacoes_saude, a.status_matricula, a.foto_path,
+                t.id AS turma_id, t.nome_turma,
                 mc.motivo_encerramento, mc.motivo_detalhe AS motivo_encerramento_detalhe, mc.data_fim AS data_encerramento,
                 uc.nome_completo AS encerrado_por_nome,
                 GROUP_CONCAT(DISTINCT CONCAT(ur.nome_completo, ' (', ur.email, ')') SEPARATOR ' ; ') AS responsaveis_vinculados
@@ -57,8 +58,9 @@ class AlunoController extends Controller
             ) mc ON mc.aluno_id = a.id
             LEFT JOIN usuarios uc ON mc.encerrado_por = uc.id
             GROUP BY
-                a.id, u.id, u.nome_completo, u.email, u.ativo, u.data_cadastro,
-                a.matricula, a.data_nascimento, a.endereco, a.status_matricula, a.foto_path, t.nome_turma,
+                a.id, u.id, u.nome_completo, u.email, u.ativo, u.data_cadastro, u.telefone,
+                a.matricula, a.cpf, a.data_nascimento, a.sexo, a.endereco, a.numero, a.complemento, a.bairro, a.cidade, a.uf, a.cep,
+                a.observacoes_saude, a.status_matricula, a.foto_path, t.id, t.nome_turma,
                 mc.motivo_encerramento, mc.motivo_detalhe, mc.data_fim, uc.nome_completo
             ORDER BY u.nome_completo ASC
         ");
@@ -66,7 +68,7 @@ class AlunoController extends Controller
         $alunos = array_map(function ($row) {
             $arr = (array) $row;
             $arr['ativo'] = (bool) $row->ativo;
-            $arr['foto_url'] = !empty($row->foto_path) ? self::FOTO_BASE_URL . $row->foto_path : null;
+            $arr['foto_url'] = \App\Services\Alunos\FotoAlunoService::url($row->foto_path);
             $arr['responsaveis_array'] = $row->responsaveis_vinculados ? explode(' ; ', $row->responsaveis_vinculados) : [];
             unset($arr['responsaveis_vinculados']);
 
@@ -80,48 +82,63 @@ class AlunoController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem cadastrar alunos.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem cadastrar alunos.'], 403);
         }
 
-        $nomeCompleto = $request->input('nome_completo');
-        $email = $request->input('email');
-        $senhaBruta = $request->input('senha');
-        $turmaId = $request->input('turma_id');
-        $matricula = $request->input('matricula');
-        $dataNascimento = $request->input('data_nascimento');
-        $endereco = $request->input('endereco');
-        $responsaveisIds = $request->input('responsaveis_ids', []);
+        $v = $this->validacao;
+        $nomeCompleto = $v->texto($request->input('nome_completo'));
+        $email = $v->texto($request->input('email'));
+        $senhaBruta = (string) $request->input('senha');
+        $turmaId = (int) $request->input('turma_id');
+        $dataNascimento = $v->texto($request->input('data_nascimento'));
+        $responsaveis = $this->responsaveisDoRequest($request);
 
-        if (!$nomeCompleto || !$email || !$senhaBruta || !$turmaId || !$matricula) {
-            return response()->json(['error' => 'Os campos obrigatórios (nome_completo, email, senha, turma_id, matricula) devem ser fornecidos.'], 400);
+        $turma = $turmaId ? DB::table('turmas')->where('id', $turmaId)->first(['id', 'ano_letivo', 'status']) : null;
+        $matricula = $v->texto($request->input('matricula')) ?? ($turma ? $this->proximaMatricula((int) $turma->ano_letivo) : null);
+
+        $erro = (!$nomeCompleto ? 'Informe o nome completo.' : null)
+            ?? (!$dataNascimento ? 'Informe a data de nascimento.' : null)
+            ?? (!$turma ? 'Escolha a turma.' : null)
+            ?? ($turma->status !== 'Ativa' ? 'Essa turma está encerrada — escolha uma turma ativa.' : null)
+            ?? $v->validarEmail($email)
+            ?? $v->validarSenha($senhaBruta)
+            ?? $v->validarCpf('alunos', $request->input('cpf'), false)
+            ?? $v->validarTelefone($request->input('telefone'), false)
+            ?? $v->validarEndereco($request->all(), false)
+            ?? $this->validarSexo($request->input('sexo'))
+            ?? (!$responsaveis ? 'Vincule pelo menos um responsável.' : null)
+            ?? (DB::table('alunos')->where('matricula', $matricula)->exists() ? 'Este número de matrícula já está em uso.' : null);
+        if ($erro) {
+            return response()->json(['error' => $erro], 422);
         }
 
         try {
-            [$alunoId, $usuarioId] = DB::transaction(function () use ($nomeCompleto, $email, $senhaBruta, $turmaId, $matricula, $dataNascimento, $endereco, $responsaveisIds) {
+            [$alunoId, $usuarioId] = DB::transaction(function () use ($request, $v, $nomeCompleto, $email, $senhaBruta, $turma, $matricula, $dataNascimento, $responsaveis) {
                 $usuarioId = DB::table('usuarios')->insertGetId([
                     'nome_completo' => $nomeCompleto,
                     'email'         => $email,
                     'senha'         => Hash::make($senhaBruta),
+                    'telefone'      => $v->telefone($request->input('telefone')),
                     'data_cadastro' => now(),
                     'ativo'         => 1,
                 ]);
 
                 $alunoId = DB::table('alunos')->insertGetId([
-                    'usuario_id'      => $usuarioId,
-                    'matricula'       => $matricula,
-                    'data_nascimento' => $dataNascimento,
-                    'endereco'        => $endereco,
-                    'status_matricula' => 'Ativo',
-                ]);
+                    'usuario_id'        => $usuarioId,
+                    'matricula'         => $matricula,
+                    'cpf'               => $v->formatarCpf($request->input('cpf')),
+                    'data_nascimento'   => $dataNascimento,
+                    'sexo'              => $v->texto($request->input('sexo')),
+                    'observacoes_saude' => $v->texto($request->input('observacoes_saude')),
+                    'status_matricula'  => 'Ativo',
+                ] + $v->endereco($request->all()));
 
-                DB::table('turma_aluno')->insert(['aluno_id' => $alunoId, 'turma_id' => $turmaId]);
-
-                $anoLetivo = DB::table('turmas')->where('id', $turmaId)->value('ano_letivo');
+                DB::table('turma_aluno')->insert(['aluno_id' => $alunoId, 'turma_id' => $turma->id]);
                 DB::table('matriculas')->insert([
                     'aluno_id'    => $alunoId,
-                    'turma_id'    => $turmaId,
-                    'ano_letivo'  => $anoLetivo,
+                    'turma_id'    => $turma->id,
+                    'ano_letivo'  => $turma->ano_letivo,
                     'data_inicio' => now()->toDateString(),
                     'status'      => 'ativa',
                     'origem'      => 'sistema',
@@ -130,20 +147,12 @@ class AlunoController extends Controller
                 // ID 4 = Aluno (ver tabela funcoes).
                 DB::table('usuario_funcao')->insert(['usuario_id' => $usuarioId, 'funcao_id' => 4]);
 
-                foreach ($responsaveisIds as $responsavelId) {
-                    if (!is_numeric($responsavelId)) {
-                        continue;
-                    }
-                    // parentesco é NOT NULL sem default no schema local (modo estrito) — o
-                    // original PHP não informava esse campo, contando com a leniência do
-                    // MySQL de produção. Explicitando '' pra funcionar em qualquer modo.
-                    DB::table('aluno_responsavel')->insert(['aluno_id' => $alunoId, 'responsavel_id' => $responsavelId, 'parentesco' => '']);
-                }
+                $this->sincronizarResponsaveis($alunoId, $responsaveis);
 
                 return [$alunoId, $usuarioId];
             });
         } catch (\Throwable $e) {
-            return response()->json(['error' => 'Falha no cadastro transacional do aluno.', 'message' => $e->getMessage()], 500);
+            return response()->json(['error' => $v->mensagemDuplicidade($e) ?? 'Falha ao cadastrar o aluno.', 'message' => $e->getMessage()], 422);
         }
 
         return response()->json([
@@ -154,13 +163,112 @@ class AlunoController extends Controller
         ], 201);
     }
 
+    /** Sugestão de matrícula para o formulário: ano + sequência (ex.: 2027001). */
+    public function proximaMatriculaSugerida(Request $request): JsonResponse
+    {
+        $ano = (int) $request->query('ano', now()->year);
+        return response()->json(['success' => true, 'matricula' => $this->proximaMatricula($ano)]);
+    }
+
+    private function proximaMatricula(int $ano): string
+    {
+        $ultima = DB::table('alunos')->where('matricula', 'like', $ano . '%')
+            ->whereRaw('matricula REGEXP ?', ['^' . $ano . '[0-9]+$'])
+            ->max(DB::raw('CAST(SUBSTRING(matricula, 5) AS UNSIGNED)'));
+        return $ano . str_pad((string) (((int) $ultima) + 1), 3, '0', STR_PAD_LEFT);
+    }
+
+    private function validarSexo($sexo): ?string
+    {
+        return ($sexo === null || $sexo === '' || in_array($sexo, ['F', 'M', 'O'], true)) ? null : 'Sexo inválido.';
+    }
+
+    /**
+     * Responsáveis do formulário: [{id, parentesco, principal}]. Aceita também o
+     * formato antigo responsaveis_ids. Garante exatamente um principal
+     * (o responsável financeiro — é quem recebe o boleto).
+     *
+     * @return array<int, array{id:int, parentesco:string, principal:bool}>
+     */
+    private function responsaveisDoRequest(Request $request): array
+    {
+        $lista = $request->input('responsaveis');
+        if (!is_array($lista)) {
+            $lista = array_map(fn ($id) => ['id' => $id], (array) $request->input('responsaveis_ids', []));
+        }
+        $out = [];
+        foreach ($lista as $r) {
+            $id = (int) ($r['id'] ?? 0);
+            if ($id && !isset($out[$id]) && DB::table('responsaveis')->where('id', $id)->exists()) {
+                $out[$id] = ['id' => $id, 'parentesco' => mb_substr(trim((string) ($r['parentesco'] ?? '')), 0, 50), 'principal' => !empty($r['principal'])];
+            }
+        }
+        $out = array_values($out);
+        if ($out && !collect($out)->contains('principal', true)) {
+            $out[0]['principal'] = true;
+        }
+        $achou = false;
+        foreach ($out as &$r) {
+            $r['principal'] = $r['principal'] && !$achou;
+            $achou = $achou || $r['principal'];
+        }
+        return $out;
+    }
+
+    /** Deixa aluno_responsavel exatamente como a lista (inclui, atualiza, remove). */
+    private function sincronizarResponsaveis(int $alunoId, array $responsaveis): void
+    {
+        $ids = array_column($responsaveis, 'id');
+        DB::table('aluno_responsavel')->where('aluno_id', $alunoId)->whereNotIn('responsavel_id', $ids ?: [0])->delete();
+        foreach ($responsaveis as $r) {
+            DB::table('aluno_responsavel')->updateOrInsert(
+                ['aluno_id' => $alunoId, 'responsavel_id' => $r['id']],
+                ['parentesco' => $r['parentesco'], 'principal' => $r['principal'] ? 1 : 0]
+            );
+        }
+    }
+
+    /** Dados do aluno para o formulário de edição (inclui responsáveis com parentesco). */
+    public function show(Request $request, int $id): JsonResponse
+    {
+        $funcoes = (array) ($request->attributes->get('max_user')->funcoes ?? $request->attributes->get('max_user')->roles ?? []);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
+        $aluno = DB::table('alunos as a')
+            ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
+            ->leftJoin('turma_aluno as ta', 'ta.aluno_id', '=', 'a.id')
+            ->leftJoin('turmas as t', 't.id', '=', 'ta.turma_id')
+            ->where('a.id', $id)
+            ->orderByDesc('t.ano_letivo')
+            ->first(['a.id as aluno_id', 'u.id as usuario_id', 'u.nome_completo', 'u.email', 'u.telefone', 'u.ativo', 'a.matricula', 'a.cpf',
+                'a.data_nascimento', 'a.sexo', 'a.cep', 'a.endereco', 'a.numero', 'a.complemento', 'a.bairro', 'a.cidade', 'a.uf',
+                'a.observacoes_saude', 'a.status_matricula', 't.id as turma_id', 't.nome_turma', 't.ano_letivo']);
+        if (!$aluno) {
+            return response()->json(['error' => 'Aluno não encontrado.'], 404);
+        }
+        $aluno->responsaveis = DB::table('aluno_responsavel as ar')
+            ->join('responsaveis as r', 'r.id', '=', 'ar.responsavel_id')
+            ->join('usuarios as u', 'u.id', '=', 'r.usuario_id')
+            ->where('ar.aluno_id', $id)
+            ->orderByDesc('ar.principal')->orderBy('u.nome_completo')
+            ->get(['r.id', 'u.nome_completo as nome', 'u.email', 'r.cpf', 'r.telefone', 'ar.parentesco', 'ar.principal',
+                'r.cep', 'r.endereco', 'r.numero', 'r.complemento', 'r.bairro', 'r.cidade', 'r.uf'])
+            ->map(function ($r) {
+                $r->principal = (bool) $r->principal;
+                return $r;
+            });
+
+        return response()->json(['success' => true, 'data' => $aluno]);
+    }
+
     public function inativar(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
         $usuarioIdLogado = (int) ($jwtUser->id ?? 0);
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem inativar um aluno.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem inativar um aluno.'], 403);
         }
 
         $alunoId = $request->input('aluno_id');
@@ -198,6 +306,10 @@ class AlunoController extends Controller
                     ]);
 
                 DB::table('alunos')->where('id', $alunoId)->update(['status_matricula' => 'Inativo']);
+
+                // Sem isso o aluno inativo continuava "na turma": não aparecia na
+                // virada de ano (lista só ativos) e impedia encerrar a turma.
+                DB::table('turma_aluno')->where('aluno_id', $alunoId)->delete();
 
                 $motivoFinanceiroMap = ['transferencia_externa' => 'aluno_transferido', 'evasao' => 'aluno_evadido'];
                 $motivoFinanceiro = $motivoFinanceiroMap[$motivo] ?? 'outro';
@@ -447,11 +559,9 @@ class AlunoController extends Controller
     }
 
     /**
-     * Salva no disco local do Laravel — atenção: a foto_url exibida no front
-     * sempre aponta pro domínio de produção (self::FOTO_BASE_URL), então uma
-     * foto enviada aqui só fica visível de verdade quando este backend estiver
-     * servindo esse mesmo domínio. Testar upload localmente não vai mostrar a
-     * imagem — isso é esperado nesta fase da migração, não é bug.
+     * Salva no disco "public" do Laravel (servido em /storage) e devolve a
+     * foto_url pronta — ver FotoAlunoService. A foto anterior, se era deste
+     * backend, é apagada para não acumular arquivos.
      */
     public function setFoto(Request $request): JsonResponse
     {
@@ -477,6 +587,7 @@ class AlunoController extends Controller
         }
 
         $caminhoBanco = 'fotos_alunos/' . $novoNome;
+        $fotoAnterior = DB::table('alunos')->where('id', $alunoId)->value('foto_path');
 
         $updated = DB::table('alunos')->where('id', $alunoId)->update(['foto_path' => $caminhoBanco]);
         if (!$updated) {
@@ -484,7 +595,11 @@ class AlunoController extends Controller
             return response()->json(['error' => 'Erro ao atualizar o caminho no banco de dados.'], 500);
         }
 
-        return response()->json(['success' => 'Foto atualizada com sucesso!', 'path' => $caminhoBanco]);
+        if ($fotoAnterior && $fotoAnterior !== $caminhoBanco) {
+            Storage::disk('public')->delete($fotoAnterior);
+        }
+
+        return response()->json(['success' => 'Foto atualizada com sucesso!', 'path' => $caminhoBanco, 'foto_url' => \App\Services\Alunos\FotoAlunoService::url($caminhoBanco)]);
     }
 
     public function deleteFoto(Request $request): JsonResponse
@@ -518,58 +633,115 @@ class AlunoController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
-        $alunoId = $request->input('aluno_id');
+        $alunoId = (int) $request->input('aluno_id');
         if (!$alunoId) {
             return response()->json(['error' => 'O campo aluno_id é obrigatório para editar.'], 400);
         }
+        $atual = DB::table('alunos')->where('id', $alunoId)->first();
+        if (!$atual) {
+            return response()->json(['error' => "Aluno ID $alunoId não encontrado no sistema."], 404);
+        }
+        $usuarioId = (int) $atual->usuario_id;
+        $v = $this->validacao;
 
-        $usuarioId = DB::table('alunos')->where('id', $alunoId)->value('usuario_id');
-        if (!$usuarioId) {
-            return response()->json(['error' => "Aluno ID $alunoId não encontrado no sistema."], 500);
+        // Aceita 'nome_aluno' (payload histórico do front) ou 'nome_completo'.
+        $novoNome = $request->input('nome_completo', $request->input('nome_aluno'));
+        $camposEndereco = ['cep', 'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'uf'];
+        $responsaveis = $request->has('responsaveis') || $request->has('responsaveis_ids') ? $this->responsaveisDoRequest($request) : null;
+
+        $erro = ($novoNome !== null && !$v->texto($novoNome) ? 'Informe o nome completo.' : null)
+            ?? ($request->has('email') ? $v->validarEmail($request->input('email'), $usuarioId) : null)
+            ?? ($request->filled('senha') ? $v->validarSenha($request->input('senha')) : null)
+            ?? ($request->has('cpf') && $v->formatarCpf($request->input('cpf')) !== $atual->cpf ? $v->validarCpf('alunos', $request->input('cpf'), false, $alunoId) : null)
+            ?? ($request->has('telefone') ? $v->validarTelefone($request->input('telefone'), false) : null)
+            ?? $v->validarEndereco($request->only($camposEndereco), false)
+            ?? $this->validarSexo($request->input('sexo'))
+            ?? ($request->has('data_nascimento') && !$v->texto($request->input('data_nascimento')) ? 'Informe a data de nascimento.' : null)
+            ?? ($responsaveis !== null && !$responsaveis ? 'O aluno precisa de pelo menos um responsável.' : null)
+            ?? ($request->has('matricula') && DB::table('alunos')->where('matricula', $request->input('matricula'))->where('id', '!=', $alunoId)->exists()
+                ? 'Este número de matrícula já está em uso.' : null);
+        if ($erro) {
+            return response()->json(['error' => $erro], 422);
         }
 
         $camposUsuario = [];
-        // Aceita 'nome_aluno' (payload histórico do front) ou 'nome_completo'.
-        $novoNome = $request->input('nome_aluno', $request->input('nome_completo'));
         if ($novoNome !== null) {
-            $camposUsuario['nome_completo'] = $novoNome;
+            $camposUsuario['nome_completo'] = $v->texto($novoNome);
         }
         if ($request->has('email')) {
-            $camposUsuario['email'] = $request->input('email');
+            $camposUsuario['email'] = $v->texto($request->input('email'));
+        }
+        if ($request->filled('senha')) {
+            $camposUsuario['senha'] = Hash::make($request->input('senha'));
+        }
+        if ($request->has('telefone')) {
+            $camposUsuario['telefone'] = $v->telefone($request->input('telefone'));
         }
 
         $camposAluno = [];
-        foreach (['matricula', 'data_nascimento', 'endereco', 'status_matricula'] as $campo) {
+        foreach (['matricula', 'data_nascimento', 'status_matricula', 'sexo', 'observacoes_saude'] as $campo) {
             if ($request->has($campo)) {
-                $camposAluno[$campo] = $request->input($campo);
+                $camposAluno[$campo] = $v->texto($request->input($campo));
+            }
+        }
+        if ($request->has('cpf')) {
+            $camposAluno['cpf'] = $v->formatarCpf($request->input('cpf'));
+        }
+        $veioEndereco = array_keys($request->only($camposEndereco));
+        if ($veioEndereco) {
+            $camposAluno += array_intersect_key($v->endereco($request->all()), array_flip($veioEndereco));
+        }
+
+        // Troca de turma (mesmo ano, turma ativa): fecha a matrícula atual como
+        // "transferida" e abre outra — o histórico de frequência/notas continua certo.
+        $novaTurmaId = $request->filled('turma_id') ? (int) $request->input('turma_id') : null;
+        $turmaAtual = DB::table('turma_aluno as ta')->join('turmas as t', 't.id', '=', 'ta.turma_id')
+            ->where('ta.aluno_id', $alunoId)->orderByDesc('t.ano_letivo')->first(['t.id', 't.ano_letivo']);
+        $trocarTurma = $novaTurmaId && (!$turmaAtual || $novaTurmaId !== (int) $turmaAtual->id);
+        if ($trocarTurma) {
+            $nova = DB::table('turmas')->where('id', $novaTurmaId)->first(['id', 'ano_letivo', 'status']);
+            if (!$nova || $nova->status !== 'Ativa') {
+                return response()->json(['error' => 'A nova turma precisa estar ativa.'], 422);
+            }
+            if ($turmaAtual && (int) $nova->ano_letivo !== (int) $turmaAtual->ano_letivo) {
+                return response()->json(['error' => 'Para mudar o aluno de ano letivo, use a Virada de Ano / Promoção.'], 422);
             }
         }
 
-        $mudouAlgo = false;
         try {
-            DB::transaction(function () use ($camposUsuario, $camposAluno, $usuarioId, $alunoId, &$mudouAlgo) {
-                if (!empty($camposUsuario)) {
+            DB::transaction(function () use ($camposUsuario, $camposAluno, $usuarioId, $alunoId, $responsaveis, $trocarTurma, $turmaAtual, $novaTurmaId, $jwtUser) {
+                if ($camposUsuario) {
                     DB::table('usuarios')->where('id', $usuarioId)->update($camposUsuario);
-                    $mudouAlgo = true;
                 }
-                if (!empty($camposAluno)) {
+                if ($camposAluno) {
                     DB::table('alunos')->where('id', $alunoId)->update($camposAluno);
-                    $mudouAlgo = true;
+                }
+                if ($responsaveis !== null) {
+                    $this->sincronizarResponsaveis($alunoId, $responsaveis);
+                }
+                if ($trocarTurma) {
+                    $ano = DB::table('turmas')->where('id', $novaTurmaId)->value('ano_letivo');
+                    if ($turmaAtual) {
+                        DB::table('turma_aluno')->where('aluno_id', $alunoId)->where('turma_id', $turmaAtual->id)->delete();
+                        DB::table('matriculas')->where('aluno_id', $alunoId)->where('turma_id', $turmaAtual->id)->where('status', 'ativa')
+                            ->update(['status' => 'transferida', 'data_fim' => now()->toDateString(), 'encerrado_por' => $jwtUser->id ?? null, 'encerrado_em' => now()]);
+                    }
+                    DB::table('turma_aluno')->insert(['aluno_id' => $alunoId, 'turma_id' => $novaTurmaId]);
+                    DB::table('matriculas')->insert([
+                        'aluno_id' => $alunoId, 'turma_id' => $novaTurmaId, 'ano_letivo' => $ano,
+                        'data_inicio' => now()->toDateString(), 'status' => 'ativa', 'origem' => 'sistema',
+                    ]);
                 }
             });
         } catch (\Throwable $e) {
-            return response()->json(['error' => 'Erro ao atualizar', 'message' => $e->getMessage()], 500);
+            return response()->json(['error' => $v->mensagemDuplicidade($e) ?? 'Erro ao atualizar o aluno.', 'message' => $e->getMessage()], 422);
         }
 
-        if ($mudouAlgo) {
-            return response()->json(['success' => 'Dados do aluno atualizados com sucesso.']);
-        }
-
-        return response()->json(['info' => 'Nenhuma alteração foi necessária.']);
+        return response()->json(['success' => 'Dados do aluno atualizados com sucesso.']);
     }
 
     /**
@@ -580,8 +752,8 @@ class AlunoController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem vincular responsáveis a alunos.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem vincular responsáveis a alunos.'], 403);
         }
 
         $alunoId = $request->input('aluno_id');

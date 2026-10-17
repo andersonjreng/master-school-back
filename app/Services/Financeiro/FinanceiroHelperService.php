@@ -183,9 +183,17 @@ class FinanceiroHelperService
             ->orderByDesc('ar.principal')
             ->orderBy('r.id')
             ->limit(1)
-            ->first(['r.id', 'r.cpf', 'r.endereco', 'r.bairro', 'r.cidade', 'r.uf', 'r.cep', 'u.nome_completo']);
+            ->first(['r.id', 'r.cpf', 'r.endereco', 'r.numero', 'r.complemento', 'r.bairro', 'r.cidade', 'r.uf', 'r.cep', 'u.nome_completo']);
+        if (!$responsavel) {
+            return null;
+        }
 
-        return $responsavel ? (array) $responsavel : null;
+        // Boleto tem um campo só de endereço: "Rua X, 123 - Apto 4".
+        $r = (array) $responsavel;
+        if (!empty($r['endereco'])) {
+            $r['endereco'] = trim($r['endereco'] . (!empty($r['numero']) ? ', ' . $r['numero'] : '') . (!empty($r['complemento']) ? ' - ' . $r['complemento'] : ''));
+        }
+        return $r;
     }
 
     /**

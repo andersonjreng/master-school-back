@@ -36,6 +36,7 @@ class RegistroAulaController extends Controller
                 ra.id,
                 ra.turma_id,
                 ra.professor_id,
+                ra.disciplina_id,
                 u.nome_completo AS professor_nome,
                 ra.data,
                 ra.disciplina,
@@ -46,11 +47,12 @@ class RegistroAulaController extends Controller
             JOIN professores p ON ra.professor_id = p.id
             JOIN usuarios u ON p.usuario_id = u.id
             WHERE ra.turma_id = ? AND ra.data = ?
-            ORDER BY u.nome_completo ASC
+            ORDER BY ra.disciplina ASC, u.nome_completo ASC
         ', [$turmaId, $data]);
 
         foreach ($registros as $row) {
             $row->numero_aulas = (int) $row->numero_aulas;
+            $row->disciplina_id = $row->disciplina_id !== null ? (int) $row->disciplina_id : null;
         }
 
         // Resolve o professor_id (professores.id) do usuário logado, para o front
@@ -119,7 +121,7 @@ class RegistroAulaController extends Controller
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
         $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = in_array('Administrador', $funcoes, true) || in_array('Diretoria', $funcoes, true) || in_array('Diretor', $funcoes, true);
+        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json([
@@ -131,12 +133,12 @@ class RegistroAulaController extends Controller
         $id = $request->input('id') ? (int) $request->input('id') : null;
         $turmaId = $request->input('turma_id');
         $dataAula = $request->input('data');
-        $disciplina = trim((string) $request->input('disciplina', ''));
+        $disciplinaId = (int) $request->input('disciplina_id');
         $conteudo = trim((string) $request->input('conteudo', ''));
         $numeroAulas = (int) $request->input('numero_aulas', 1);
         $observacoes = $request->input('observacoes');
 
-        if (!$turmaId || !$dataAula || $disciplina === '' || $conteudo === '') {
+        if (!$turmaId || !$dataAula || !$disciplinaId || $conteudo === '') {
             return response()->json([
                 'error'   => 'Campos obrigatórios faltando.',
                 'message' => 'Turma, data, disciplina e conteúdo são obrigatórios.',
@@ -147,6 +149,21 @@ class RegistroAulaController extends Controller
             $numeroAulas = 1;
         }
 
+        if ($bloqueio = app(\App\Services\Turmas\TurmaSituacaoService::class)->bloqueio((int) $turmaId)) {
+            return $bloqueio;
+        }
+
+        // Aula em dia sem aula no calendário escolar: só com confirmação explícita.
+        if (!$id && !$request->boolean('confirmar_dia_nao_letivo')
+            && ($naoLetivo = app(\App\Services\Turmas\CalendarioEscolarService::class)->avisoDiaNaoLetivo((int) $turmaId, (string) $dataAula))) {
+            return response()->json($naoLetivo, 409);
+        }
+
+        $disciplina = DB::table('disciplinas')->where('id', $disciplinaId)->value('nome_disciplina');
+        if (!$disciplina) {
+            return response()->json(['error' => 'Disciplina não encontrada.'], 404);
+        }
+
         // Resolve o professor logado (se houver vínculo na tabela professores)
         $professorIdLogado = null;
         if ($isProfessor) {
@@ -155,7 +172,7 @@ class RegistroAulaController extends Controller
 
         if ($id) {
             // ─── Edição de registro existente ──────────────────────────────
-            $registroAtual = DB::table('registros_aula')->where('id', $id)->first(['professor_id']);
+            $registroAtual = DB::table('registros_aula')->where('id', $id)->first(['professor_id', 'disciplina_id']);
 
             if (!$registroAtual) {
                 return response()->json(['error' => 'Registro de aula não encontrado.'], 404);
@@ -168,7 +185,16 @@ class RegistroAulaController extends Controller
                 ], 403);
             }
 
+            // A disciplina de um registro existente não muda: para outra
+            // disciplina, o professor cria um registro novo. Registros antigos
+            // (sem disciplina_id) ganham o vínculo na primeira edição.
+            if ($registroAtual->disciplina_id !== null) {
+                $disciplinaId = (int) $registroAtual->disciplina_id;
+                $disciplina = DB::table('disciplinas')->where('id', $disciplinaId)->value('nome_disciplina') ?? $disciplina;
+            }
+
             DB::table('registros_aula')->where('id', $id)->update([
+                'disciplina_id' => $disciplinaId,
                 'disciplina'   => $disciplina,
                 'conteudo'     => $conteudo,
                 'numero_aulas' => $numeroAulas,
@@ -186,22 +212,37 @@ class RegistroAulaController extends Controller
                 ], 403);
             }
 
+            $leciona = DB::table('turma_professor_disciplina')
+                ->where('turma_id', $turmaId)
+                ->where('professor_id', $professorIdLogado)
+                ->where('disciplina_id', $disciplinaId)
+                ->exists();
+
+            if (!$leciona) {
+                return response()->json([
+                    'error'   => 'Acesso negado.',
+                    'message' => 'Você não leciona esta disciplina nesta turma.',
+                ], 403);
+            }
+
             $existente = DB::table('registros_aula')
                 ->where('turma_id', $turmaId)
                 ->where('professor_id', $professorIdLogado)
+                ->where('disciplina_id', $disciplinaId)
                 ->where('data', $dataAula)
                 ->exists();
 
             if ($existente) {
                 return response()->json([
                     'error'   => 'Registro duplicado.',
-                    'message' => 'Você já possui um registro de aula para esta turma nesta data. Edite o registro existente.',
+                    'message' => "Já existe um registro de $disciplina para esta turma nesta data. Edite o registro existente.",
                 ], 409);
             }
 
             $registroId = DB::table('registros_aula')->insertGetId([
                 'turma_id'     => $turmaId,
                 'professor_id' => $professorIdLogado,
+                'disciplina_id' => $disciplinaId,
                 'data'         => $dataAula,
                 'disciplina'   => $disciplina,
                 'conteudo'     => $conteudo,
@@ -229,5 +270,57 @@ class RegistroAulaController extends Controller
             'registro_id' => $registroId,
             'message'     => 'Registro de aula salvo com sucesso.',
         ]);
+    }
+
+    public function excluir(Request $request): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        $usuarioId = $jwtUser->id ?? null;
+        $username = $jwtUser->nome ?? 'desconhecido';
+        $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
+        $isProfessor = in_array('Professor', $funcoes, true);
+        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
+
+        if (!$isProfessor && !$isAdmin) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
+
+        $id = $request->query('id');
+        if (!$id || !is_numeric($id)) {
+            return response()->json(['error' => 'Parâmetro id é obrigatório.'], 400);
+        }
+        $id = (int) $id;
+
+        $registro = DB::table('registros_aula')->where('id', $id)->first(['professor_id', 'turma_id', 'data', 'disciplina']);
+        if (!$registro) {
+            return response()->json(['error' => 'Registro de aula não encontrado.'], 404);
+        }
+
+        if ($bloqueio = app(\App\Services\Turmas\TurmaSituacaoService::class)->bloqueio((int) $registro->turma_id)) {
+            return $bloqueio;
+        }
+
+        if (!$isAdmin) {
+            $professorIdLogado = DB::table('professores')->where('usuario_id', $usuarioId)->value('id');
+            if ((int) $registro->professor_id !== (int) $professorIdLogado) {
+                return response()->json(['error' => 'Você só pode excluir registros de aula que você mesmo criou.'], 403);
+            }
+        }
+
+        DB::table('registros_aula')->where('id', $id)->delete();
+
+        $this->log->registrar(
+            $request,
+            $usuarioId,
+            $username,
+            'EXCLUSAO_REGISTRO_AULA',
+            '/api/registros-aula',
+            'DELETE',
+            "Registro de aula #$id excluído ({$registro->disciplina}, turma #{$registro->turma_id}, data {$registro->data})",
+            200,
+            ['registro_id' => $id, 'turma_id' => $registro->turma_id, 'data' => $registro->data]
+        );
+
+        return response()->json(['success' => true, 'message' => 'Registro de aula excluído com sucesso.']);
     }
 }

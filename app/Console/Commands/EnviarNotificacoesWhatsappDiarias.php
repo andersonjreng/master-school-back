@@ -61,6 +61,15 @@ class EnviarNotificacoesWhatsappDiarias extends Command
             }
 
             try {
+                $com = $whatsapp->processarAvisosComunicacao();
+                $this->info($com['ativo']
+                    ? "[$dbname] Comunicação — Enviados: {$com['enviados']} | Já avisados: {$com['ignorados']} | Falhas: {$com['falhas']}"
+                    : "[$dbname] Comunicação — desligada (defina WHATSAPP_TEMPLATE_NAME_COMUNICACAO após aprovar o template na Meta)");
+            } catch (\Throwable $e) {
+                $this->error("[$dbname] Erro ao processar avisos da comunicação: {$e->getMessage()}");
+            }
+
+            try {
                 $resultadoAvaliacoes = $whatsapp->processarAvisosAvaliacaoAgendada();
                 $this->info("[$dbname] Avaliações agendadas — Enviados: {$resultadoAvaliacoes['enviados']} | Já notificados antes: {$resultadoAvaliacoes['ignorados']} | Falhas: {$resultadoAvaliacoes['falhas']}");
             } catch (\Throwable $e) {

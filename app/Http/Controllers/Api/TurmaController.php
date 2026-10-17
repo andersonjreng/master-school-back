@@ -22,8 +22,27 @@ class TurmaController extends Controller
             return response()->json(['error' => 'Acesso negado. Você não tem permissão para listar as turmas.'], 403);
         }
 
+        // ?minhas=1 → só as turmas em que o usuário logado leciona (tela Minhas
+        // Turmas do professor). Sem o parâmetro, mantém a listagem completa.
+        $professorId = null;
+        if ($request->boolean('minhas')) {
+            $professorId = DB::table('professores')->where('usuario_id', (int) ($jwtUser->id ?? 0))->value('id');
+            if (!$professorId) {
+                return response()->json(['success' => true, 'count' => 0, 'data' => []]);
+            }
+        }
+
         $turmas = DB::table('turmas as t')
-            ->leftJoin('turma_aluno as ta', 't.id', '=', 'ta.turma_id')
+            ->when($professorId, fn ($q) => $q->whereIn('t.id',
+                DB::table('turma_professor_disciplina')->where('professor_id', $professorId)->select('turma_id')))
+            ->leftJoinSub(
+                DB::table('turma_aluno')->select('turma_id', 'aluno_id')->union(
+                    DB::table('matriculas as m')->join('turmas as tm', 'tm.id', '=', 'm.turma_id')
+                        ->where('tm.status', '<>', 'Ativa')
+                        ->select('m.turma_id', 'm.aluno_id')
+                ),
+                'ta', 't.id', '=', 'ta.turma_id'
+            )
             ->leftJoin('alunos as a', 'ta.aluno_id', '=', 'a.id')
             ->leftJoin('usuarios as ua', 'a.usuario_id', '=', 'ua.id')
             ->select([
@@ -75,8 +94,8 @@ class TurmaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem criar turmas.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem criar turmas.'], 403);
         }
 
         $nomeTurma = $request->input('nome_turma');
@@ -90,6 +109,14 @@ class TurmaController extends Controller
             return response()->json(['error' => 'Os campos obrigatórios (nome_turma, ano_letivo, turno, capacidade, sistema_avaliacao_id) devem ser fornecidos.'], 400);
         }
         $anoLetivo = (int) $anoLetivo;
+
+        // Nome é único por ano letivo ("5º Ano" pode existir em 2026 e em 2027).
+        $duplicada = DB::table('turmas')->where('ano_letivo', $anoLetivo)
+            ->whereRaw('LOWER(nome_turma) = ?', [mb_strtolower(trim($nomeTurma))])->exists();
+        if ($duplicada) {
+            return response()->json(['error' => "Já existe a turma \"$nomeTurma\" em $anoLetivo."], 409);
+        }
+        DB::table('anos_letivos')->insertOrIgnore(['ano' => $anoLetivo]);
 
         try {
             $turmaId = DB::transaction(function () use ($nomeTurma, $anoLetivo, $turno, $capacidade, $sistemaAvaliacaoId, $status) {
@@ -142,8 +169,8 @@ class TurmaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem editar turmas.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem editar turmas.'], 403);
         }
 
         $turmaId = $request->input('turma_id');
@@ -214,12 +241,34 @@ class TurmaController extends Controller
         return response()->json(['success' => 'Turma atualizada com sucesso.']);
     }
 
+    /** Situação de uma turma (o front usa para entrar em modo somente leitura). */
+    public function show(int $id): JsonResponse
+    {
+        $turma = DB::table('turmas')->where('id', $id)
+            ->first(['id', 'nome_turma', 'ano_letivo', 'turno', 'status', 'encerrada_em', 'sistema_avaliacao_id', 'etapa_bncc']);
+        if (!$turma) {
+            return response()->json(['error' => 'Turma não encontrada.'], 404);
+        }
+
+        return response()->json(['success' => true, 'data' => [
+            'id'                   => (int) $turma->id,
+            'nome_turma'           => $turma->nome_turma,
+            'ano_letivo'           => (int) $turma->ano_letivo,
+            'turno'                => $turma->turno,
+            'status'               => $turma->status,
+            'encerrada_em'         => $turma->encerrada_em,
+            'editavel'             => $turma->status === 'Ativa',
+            'sistema_avaliacao_id' => $turma->sistema_avaliacao_id !== null ? (int) $turma->sistema_avaliacao_id : null,
+            'etapa_bncc'           => $turma->etapa_bncc,
+        ]]);
+    }
+
     public function updateStatus(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem alterar o status da turma.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem alterar o status da turma.'], 403);
         }
 
         $turmaId = $request->query('turma_id');
@@ -236,7 +285,32 @@ class TurmaController extends Controller
             return response()->json(['error' => 'Status inválido. Use um dos seguintes: ' . implode(', ', $validStatuses)], 400);
         }
 
-        $updated = DB::table('turmas')->where('id', $turmaId)->update(['status' => $status]);
+        // Encerrar = congelar a turma. Só depois que todos os alunos foram
+        // promovidos/concluídos (senão eles ficariam presos numa turma congelada).
+        if ($status === 'Encerrada') {
+            $restantes = DB::table('turma_aluno as ta')->join('alunos as al', 'al.id', '=', 'ta.aluno_id')
+                ->join('usuarios as ua', 'ua.id', '=', 'al.usuario_id')->where('ua.ativo', 1)
+                ->where('ta.turma_id', $turmaId)->count();
+            if ($restantes > 0) {
+                return response()->json([
+                    'error'   => 'Turma ainda tem alunos.',
+                    'message' => "Esta turma ainda tem $restantes aluno(s) vinculado(s). Faça a promoção (promover, reter, concluir ou não renovou) antes de encerrar.",
+                    'alunos_restantes' => $restantes,
+                ], 409);
+            }
+        }
+
+        $updated = DB::table('turmas')->where('id', $turmaId)->update([
+            'status'       => $status,
+            'encerrada_em' => $status === 'Encerrada' ? now() : null,
+        ]);
+        if ($updated > 0) {
+            app(\App\Services\Sistema\LogSistemaService::class)->registrar(
+                $request, (int) ($jwtUser->id ?? 0), $jwtUser->nome ?? 'desconhecido', 'STATUS_TURMA',
+                '/api/admin/turmas/status', 'PATCH', "Turma #$turmaId alterada para $status", 200,
+                ['turma_id' => (int) $turmaId, 'status' => $status]
+            );
+        }
 
         if ($updated === 0) {
             return response()->json(['error' => 'Turma não encontrada ou o status fornecido já estava aplicado.'], 404);
@@ -304,8 +378,8 @@ class TurmaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem vincular alunos a turmas.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem vincular alunos a turmas.'], 403);
         }
 
         $turmaId = $request->input('turma_id');
@@ -321,6 +395,10 @@ class TurmaController extends Controller
         $alunosIdsValidos = array_values(array_filter($alunosIds, 'is_numeric'));
         if (empty($alunosIdsValidos)) {
             return response()->json(['error' => 'Nenhum aluno válido fornecido para vincular.'], 400);
+        }
+
+        if ($bloqueio = app(\App\Services\Turmas\TurmaSituacaoService::class)->bloqueio((int) $turmaId)) {
+            return $bloqueio;
         }
 
         $avisos = [];
@@ -393,88 +471,176 @@ class TurmaController extends Controller
      * (individuais por aluno). Cada aluno é processado em sua própria transação —
      * um aluno com problema não derruba o lote inteiro.
      */
+    /**
+     * Virada de ano: decide o destino de cada aluno da turma de origem.
+     *
+     * Ações por aluno (itens[].acao):
+     * - promover / reter: vai para turma_destino_id (ativa). A matrícula de
+     *   origem é fechada como 'concluida' quando o destino é de outro ano
+     *   (ano concluído), ou 'transferida' se for do mesmo ano.
+     * - concluir: formando — fecha a matrícula como concluída, tira da turma
+     *   e inativa o aluno (status Concluido). Financeiro não é mexido.
+     * - nao_renovou: fecha a matrícula (ano concluído), tira da turma e
+     *   inativa o aluno (status Inativo). Financeiro não é mexido.
+     *
+     * encerrar_origem = true → encerra a turma de origem se ficar sem alunos.
+     * Compatível com o formato antigo (promocoes[] com turma_destino_id).
+     */
     public function promoverAlunos(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
+        $usuarioIdLogado = (int) ($jwtUser->id ?? 0);
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem promover alunos.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem promover alunos.'], 403);
         }
 
-        $turmaOrigemId = $request->input('turma_origem_id');
-        $promocoes = $request->input('promocoes', []);
-
-        if (!$turmaOrigemId || !is_numeric($turmaOrigemId)) {
-            return response()->json(['error' => 'turma_origem_id é obrigatório e deve ser numérico.'], 400);
+        $turmaOrigemId = (int) $request->input('turma_origem_id');
+        $itens = $request->input('itens');
+        if ($itens === null) {
+            $itens = array_map(fn ($p) => ['aluno_id' => $p['aluno_id'] ?? null, 'acao' => 'promover', 'turma_destino_id' => $p['turma_destino_id'] ?? null],
+                (array) $request->input('promocoes', []));
         }
-        if (empty($promocoes) || !is_array($promocoes)) {
-            return response()->json(['error' => 'A lista de promoções (promocoes) deve ser fornecida como um array não vazio.'], 400);
-        }
-        $turmaOrigemId = (int) $turmaOrigemId;
 
-        $promovidos = [];
+        if (!$turmaOrigemId) {
+            return response()->json(['error' => 'turma_origem_id é obrigatório.'], 400);
+        }
+        if (empty($itens) || !is_array($itens)) {
+            return response()->json(['error' => 'Informe ao menos um aluno (itens).'], 400);
+        }
+
+        $origem = DB::table('turmas')->where('id', $turmaOrigemId)->first(['id', 'nome_turma', 'ano_letivo', 'status']);
+        if (!$origem) {
+            return response()->json(['error' => 'Turma de origem não encontrada.'], 404);
+        }
+        if ($origem->status !== 'Ativa') {
+            return response()->json(['error' => 'A turma de origem precisa estar ativa. Reabra-a em Cadastros → Turmas se precisar ajustar a promoção.'], 409);
+        }
+
+        // Fim da matrícula de origem: hoje ou a última chamada lançada na turma
+        // (o que for depois), para o histórico cobrir o ano letivo inteiro.
+        $ultimaChamada = DB::table('frequencia as f')
+            ->join('turma_aluno as ta', 'ta.aluno_id', '=', 'f.aluno_id')
+            ->where('ta.turma_id', $turmaOrigemId)
+            ->whereYear('f.data', $origem->ano_letivo)
+            ->max('f.data');
+        $dataFim = max(now()->toDateString(), (string) $ultimaChamada);
+
+        $resultado = ['promovidos' => 0, 'retidos' => 0, 'concluidos' => 0, 'nao_renovaram' => 0];
         $erros = [];
 
-        foreach ($promocoes as $item) {
-            $alunoId = $item['aluno_id'] ?? null;
-            $turmaDestinoId = $item['turma_destino_id'] ?? null;
+        foreach ($itens as $item) {
+            $alunoId = (int) ($item['aluno_id'] ?? 0);
+            $acao = $item['acao'] ?? 'promover';
+            $destinoId = (int) ($item['turma_destino_id'] ?? 0);
 
-            if (!$alunoId || !is_numeric($alunoId) || !$turmaDestinoId || !is_numeric($turmaDestinoId)) {
-                $erros[] = ['aluno_id' => $alunoId, 'motivo' => 'aluno_id ou turma_destino_id inválido.'];
+            if (!$alunoId || !in_array($acao, ['promover', 'reter', 'concluir', 'nao_renovou'], true)) {
+                $erros[] = ['aluno_id' => $alunoId, 'motivo' => 'Aluno ou ação inválida.'];
                 continue;
             }
-            $alunoId = (int) $alunoId;
-            $turmaDestinoId = (int) $turmaDestinoId;
 
             try {
-                DB::transaction(function () use ($alunoId, $turmaOrigemId, $turmaDestinoId) {
-                    $turmaDestino = DB::table('turmas')->where('id', $turmaDestinoId)->value('status');
-                    if (!$turmaDestino || $turmaDestino !== 'Ativa') {
-                        throw new \Exception('Turma de destino não existe ou não está ativa.');
+                DB::transaction(function () use ($alunoId, $acao, $destinoId, $origem, $dataFim, $usuarioIdLogado) {
+                    $vinculado = DB::table('turma_aluno')->where('aluno_id', $alunoId)->where('turma_id', $origem->id)->exists();
+                    if (!$vinculado) {
+                        throw new \Exception('Aluno não está nesta turma.');
                     }
 
-                    $fechadas = DB::table('matriculas')
-                        ->where('aluno_id', $alunoId)->where('turma_id', $turmaOrigemId)->where('status', 'ativa')
-                        ->update(['status' => 'transferida', 'data_fim' => now()->toDateString()]);
-                    if ($fechadas === 0) {
-                        throw new \Exception('Aluno não possui matrícula ativa na turma de origem informada.');
+                    if (in_array($acao, ['promover', 'reter'], true)) {
+                        $destino = DB::table('turmas')->where('id', $destinoId)->first(['id', 'ano_letivo', 'status']);
+                        if (!$destino || $destino->status !== 'Ativa') {
+                            throw new \Exception('Turma de destino não existe ou não está ativa.');
+                        }
+                        if ((int) $destino->id === (int) $origem->id) {
+                            throw new \Exception('A turma de destino deve ser diferente da origem.');
+                        }
+
+                        $anoConcluido = (int) $destino->ano_letivo > (int) $origem->ano_letivo;
+                        $this->fecharMatricula($alunoId, $origem->id, $anoConcluido ? 'concluida' : 'transferida',
+                            $anoConcluido ? 'conclusao' : 'outro', $acao === 'reter' ? 'Retido — permanece na mesma etapa' : null,
+                            $dataFim, $usuarioIdLogado);
+
+                        DB::table('turma_aluno')->where('aluno_id', $alunoId)->where('turma_id', $origem->id)
+                            ->update(['turma_id' => $destino->id]);
+                        DB::table('matriculas')->insert([
+                            'aluno_id' => $alunoId, 'turma_id' => $destino->id, 'ano_letivo' => $destino->ano_letivo,
+                            'data_inicio' => $anoConcluido ? $destino->ano_letivo . '-01-01' : now()->toDateString(),
+                            'status' => 'ativa', 'origem' => 'sistema',
+                        ]);
+                        return;
                     }
 
-                    $atualizados = DB::table('turma_aluno')
-                        ->where('aluno_id', $alunoId)->where('turma_id', $turmaOrigemId)
-                        ->update(['turma_id' => $turmaDestinoId]);
-                    if ($atualizados === 0) {
-                        throw new \Exception('Vínculo em turma_aluno não encontrado para atualizar.');
-                    }
-
-                    DB::statement("
-                        INSERT INTO matriculas (aluno_id, turma_id, ano_letivo, data_inicio, status, origem)
-                        SELECT ?, ?, t.ano_letivo, CURDATE(), 'ativa', 'sistema'
-                        FROM turmas t WHERE t.id = ?
-                    ", [$alunoId, $turmaDestinoId, $turmaDestinoId]);
+                    // concluir / nao_renovou: sai da escola ao fim do ano.
+                    $concluiu = $acao === 'concluir';
+                    $this->fecharMatricula($alunoId, $origem->id, 'concluida', $concluiu ? 'conclusao' : 'outro',
+                        $concluiu ? 'Concluiu a etapa (formando)' : 'Não renovou a matrícula',
+                        $dataFim, $usuarioIdLogado);
+                    DB::table('turma_aluno')->where('aluno_id', $alunoId)->where('turma_id', $origem->id)->delete();
+                    DB::table('alunos')->where('id', $alunoId)->update(['status_matricula' => $concluiu ? 'Concluido' : 'Inativo']);
+                    $usuarioAluno = DB::table('alunos')->where('id', $alunoId)->value('usuario_id');
+                    DB::table('usuarios')->where('id', $usuarioAluno)->update(['ativo' => 0]);
                 });
 
-                $promovidos[] = ['aluno_id' => $alunoId, 'turma_destino_id' => $turmaDestinoId];
+                $chave = ['promover' => 'promovidos', 'reter' => 'retidos', 'concluir' => 'concluidos', 'nao_renovou' => 'nao_renovaram'][$acao];
+                $resultado[$chave]++;
             } catch (\Throwable $e) {
                 $erros[] = ['aluno_id' => $alunoId, 'motivo' => $e->getMessage()];
             }
         }
 
+        $restantes = DB::table('turma_aluno as ta')->join('alunos as al', 'al.id', '=', 'ta.aluno_id')
+                ->join('usuarios as ua', 'ua.id', '=', 'al.usuario_id')->where('ua.ativo', 1)
+            ->where('ta.turma_id', $origem->id)->count();
+        $encerrada = false;
+        if ($request->boolean('encerrar_origem') && $restantes === 0) {
+            DB::table('turmas')->where('id', $origem->id)->update(['status' => 'Encerrada', 'encerrada_em' => now()]);
+            $encerrada = true;
+        }
+
+        app(\App\Services\Sistema\LogSistemaService::class)->registrar(
+            $request, $usuarioIdLogado, $jwtUser->nome ?? 'desconhecido', 'PROMOCAO_ALUNOS', '/api/admin/turmas/promover-alunos', 'POST',
+            "Virada da turma {$origem->nome_turma} ({$origem->ano_letivo}): " . json_encode($resultado) . ($encerrada ? ' — turma encerrada' : ''),
+            200,
+            ['turma_origem_id' => $origem->id] + $resultado + ['erros' => count($erros)]
+        );
+
         return response()->json([
-            'success' => true,
-            'total_solicitado' => count($promocoes),
-            'total_promovidos' => count($promovidos),
-            'promovidos' => $promovidos,
-            'erros' => $erros,
+            'success'          => true,
+            'total_solicitado' => count($itens),
+            'total_promovidos' => array_sum($resultado),
+            'resultado'        => $resultado,
+            'erros'            => $erros,
+            'alunos_restantes' => $restantes,
+            'turma_encerrada'  => $encerrada,
         ]);
+    }
+
+    private function fecharMatricula(int $alunoId, int $turmaId, string $status, string $motivo, ?string $detalhe, string $dataFim, int $usuarioId): void
+    {
+        $fechadas = DB::table('matriculas')
+            ->where('aluno_id', $alunoId)->where('turma_id', $turmaId)->where('status', 'ativa')
+            ->update([
+                'status' => $status, 'data_fim' => $dataFim, 'motivo_encerramento' => $motivo,
+                'motivo_detalhe' => $detalhe, 'encerrado_por' => $usuarioId, 'encerrado_em' => now(),
+            ]);
+
+        // Vínculo sem matrícula registrada (dados antigos): cria o histórico já fechado.
+        if ($fechadas === 0) {
+            $ano = DB::table('turmas')->where('id', $turmaId)->value('ano_letivo');
+            DB::table('matriculas')->insert([
+                'aluno_id' => $alunoId, 'turma_id' => $turmaId, 'ano_letivo' => $ano, 'data_fim' => $dataFim,
+                'status' => $status, 'motivo_encerramento' => $motivo, 'motivo_detalhe' => $detalhe,
+                'encerrado_por' => $usuarioId, 'encerrado_em' => now(), 'origem' => 'sistema',
+            ]);
+        }
     }
 
     public function transferirAluno(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem transferir alunos.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem transferir alunos.'], 403);
         }
 
         $alunoId = $request->input('aluno_id');

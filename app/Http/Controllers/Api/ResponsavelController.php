@@ -14,26 +14,28 @@ use Illuminate\Support\Facades\Hash;
  */
 class ResponsavelController extends Controller
 {
-    private const FOTO_BASE_URL = 'https://portalmasterschool.com.br/cepelc/api/';
 
-    public function __construct(private AlunoResponsavelVinculoService $vinculos)
-    {
+    public function __construct(
+        private AlunoResponsavelVinculoService $vinculos,
+        private \App\Services\Cadastro\CadastroValidacaoService $validacao,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem listar os responsáveis.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem listar os responsáveis.'], 403);
         }
 
         $rows = DB::select("
             SELECT
                 u.id AS usuario_responsavel_id, u.nome_completo AS nome_responsavel, u.email AS email_responsavel,
                 u.ativo AS responsavel_ativo, u.data_cadastro, r.id AS responsavel_registro_id, r.cpf, r.telefone,
-                r.profissao, r.notificacao_whatsapp_ativa, r.endereco, r.bairro, r.cidade, r.uf, r.cep,
-                GROUP_CONCAT(DISTINCT us.nome_completo ORDER BY us.nome_completo ASC SEPARATOR ' ; ') AS alunos_associados
+                r.profissao, r.notificacao_whatsapp_ativa, r.endereco, r.numero, r.complemento, r.bairro, r.cidade, r.uf, r.cep,
+                GROUP_CONCAT(DISTINCT us.nome_completo ORDER BY us.nome_completo ASC SEPARATOR ' ; ') AS alunos_associados,
+                GROUP_CONCAT(DISTINCT a.id SEPARATOR ',') AS alunos_ids
             FROM responsaveis r
             JOIN usuarios u ON r.usuario_id = u.id
             LEFT JOIN aluno_responsavel ar ON r.id = ar.responsavel_id
@@ -41,7 +43,7 @@ class ResponsavelController extends Controller
             LEFT JOIN usuarios us ON a.usuario_id = us.id
             GROUP BY
                 r.id, u.id, u.nome_completo, u.email, u.ativo, u.data_cadastro, r.cpf, r.telefone, r.profissao,
-                r.notificacao_whatsapp_ativa, r.endereco, r.bairro, r.cidade, r.uf, r.cep
+                r.notificacao_whatsapp_ativa, r.endereco, r.numero, r.complemento, r.bairro, r.cidade, r.uf, r.cep
             ORDER BY u.nome_completo ASC
         ");
 
@@ -50,6 +52,8 @@ class ResponsavelController extends Controller
             $arr['responsavel_ativo'] = (bool) $row->responsavel_ativo;
             $arr['notificacao_whatsapp_ativa'] = (bool) $row->notificacao_whatsapp_ativa;
             $arr['alunos_associados_array'] = $row->alunos_associados ? explode(' ; ', $row->alunos_associados) : [];
+            $arr['alunos_ids'] = $row->alunos_ids ? array_map('intval', explode(',', $row->alunos_ids)) : [];
+            $arr['pendencias_cadastro'] = $this->pendencias($arr);
             unset($arr['alunos_associados']);
 
             return $arr;
@@ -58,89 +62,86 @@ class ResponsavelController extends Controller
         return response()->json(['success' => true, 'count' => count($responsaveis), 'data' => $responsaveis]);
     }
 
+    /** O que falta para o responsável receber boleto e WhatsApp. */
+    private function pendencias(array $r): array
+    {
+        $p = [];
+        if (!$this->validacao->cpfValido($r['cpf'] ?? null)) {
+            $p[] = 'CPF';
+        }
+        if (!$this->validacao->telefoneValido($r['telefone'] ?? null)) {
+            $p[] = 'telefone';
+        }
+        if ($this->validacao->validarEndereco($r, true)) {
+            $p[] = 'endereço';
+        }
+        return $p;
+    }
+
     public function store(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem cadastrar responsáveis.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem cadastrar responsáveis.'], 403);
         }
 
-        $nomeCompleto = $request->input('nome_completo');
-        $email = $request->input('email');
-        $senhaBruta = $request->input('senha');
-        $cpf = $request->input('cpf');
-        $telefone = $request->input('telefone');
-        $profissao = $request->input('profissao');
-        $endereco = $request->input('endereco');
-        $bairro = $request->input('bairro');
-        $cidade = $request->input('cidade');
-        $uf = $request->input('uf');
-        $cep = $request->input('cep');
-        $alunosIds = $request->input('alunos_ids', []);
+        $v = $this->validacao;
+        $nomeCompleto = $v->texto($request->input('nome_completo'));
+        $email = $v->texto($request->input('email'));
+        $senhaBruta = (string) $request->input('senha');
+        $alunosIds = array_filter((array) $request->input('alunos_ids', []), 'is_numeric');
 
-        if (!$nomeCompleto || !$email || !$senhaBruta || !$cpf) {
-            return response()->json(['error' => 'Os campos obrigatórios (nome_completo, email, senha, cpf) devem ser fornecidos.'], 400);
+        $erro = (!$nomeCompleto ? 'Informe o nome completo.' : null)
+            ?? $v->validarCpf('responsaveis', $request->input('cpf'), true)
+            ?? $v->validarEmail($email)
+            ?? $v->validarSenha($senhaBruta)
+            ?? $v->validarTelefone($request->input('telefone'), true)
+            ?? $v->validarEndereco($request->all(), true);
+        if ($erro) {
+            return response()->json(['error' => $erro], 422);
         }
-        // Telefone é obrigatório: é o canal usado para notificação via WhatsApp.
-        if (!$telefone) {
-            return response()->json(['error' => 'O campo telefone é obrigatório.'], 400);
-        }
+
+        $dados = [
+            'cpf'       => $v->formatarCpf($request->input('cpf')),
+            'telefone'  => $v->telefone($request->input('telefone')),
+            'profissao' => $v->texto($request->input('profissao')),
+            'notificacao_whatsapp_ativa' => $request->boolean('notificacao_whatsapp_ativa') ? 1 : 0,
+        ] + $v->endereco($request->all());
 
         try {
-            [$responsavelId, $usuarioId] = DB::transaction(function () use (
-                $nomeCompleto, $email, $senhaBruta, $cpf, $profissao, $telefone,
-                $endereco, $bairro, $cidade, $uf, $cep, $alunosIds
-            ) {
+            [$responsavelId, $usuarioId] = DB::transaction(function () use ($nomeCompleto, $email, $senhaBruta, $dados, $alunosIds) {
                 $usuarioId = DB::table('usuarios')->insertGetId([
                     'nome_completo' => $nomeCompleto,
                     'email'         => $email,
                     'senha'         => Hash::make($senhaBruta),
+                    'telefone'      => $dados['telefone'],
                     'data_cadastro' => now(),
                     'ativo'         => 1,
                 ]);
 
-                try {
-                    $responsavelId = DB::table('responsaveis')->insertGetId([
-                        'usuario_id' => $usuarioId,
-                        'cpf'        => $cpf,
-                        'profissao'  => $profissao,
-                        'telefone'   => $telefone,
-                        'endereco'   => $endereco,
-                        'bairro'     => $bairro,
-                        'cidade'     => $cidade,
-                        'uf'         => $uf,
-                        'cep'        => $cep,
-                    ]);
-                } catch (\Illuminate\Database\QueryException $e) {
-                    if ((int) $e->errorInfo[1] === 1062) {
-                        throw new \Exception('CPF já cadastrado no sistema.');
-                    }
-                    throw $e;
-                }
+                $responsavelId = DB::table('responsaveis')->insertGetId(['usuario_id' => $usuarioId] + $dados);
 
                 // ID 5 = Responsável (ver tabela funcoes).
                 DB::table('usuario_funcao')->insert(['usuario_id' => $usuarioId, 'funcao_id' => 5]);
 
                 foreach ($alunosIds as $alunoId) {
-                    if (!is_numeric($alunoId)) {
-                        continue;
-                    }
-                    DB::table('aluno_responsavel')->insert(['aluno_id' => $alunoId, 'responsavel_id' => $responsavelId]);
+                    DB::table('aluno_responsavel')->insertOrIgnore(['aluno_id' => $alunoId, 'responsavel_id' => $responsavelId, 'parentesco' => '']);
                 }
 
                 return [$responsavelId, $usuarioId];
             });
         } catch (\Throwable $e) {
-            return response()->json(['error' => 'Falha no cadastro transacional do responsável.', 'message' => $e->getMessage()], 500);
+            return response()->json(['error' => $v->mensagemDuplicidade($e) ?? 'Falha ao cadastrar o responsável.', 'message' => $e->getMessage()], 422);
         }
 
         return response()->json([
-            'success'                  => 'Responsável e vínculos com alunos cadastrados com sucesso.',
+            'success'                  => 'Responsável cadastrado com sucesso.',
             'responsavel_id'           => $responsavelId,
             'usuario_id'               => $usuarioId,
-            'cpf'                      => $cpf,
-            'telefone'                 => $telefone,
+            'nome'                     => $nomeCompleto,
+            'cpf'                      => $dados['cpf'],
+            'telefone'                 => $dados['telefone'],
             'alunos_vinculados_count'  => count($alunosIds),
         ], 201);
     }
@@ -149,57 +150,84 @@ class ResponsavelController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem editar responsáveis.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem editar responsáveis.'], 403);
         }
 
-        $responsavelId = $request->input('responsavel_id');
+        $responsavelId = (int) $request->input('responsavel_id');
         if (!$responsavelId) {
             return response()->json(['error' => 'O campo responsavel_id é obrigatório.'], 400);
         }
 
-        $responsavelAtual = DB::table('responsaveis')->where('id', $responsavelId)->first(['usuario_id', 'telefone']);
-        if (!$responsavelAtual) {
+        $atual = DB::table('responsaveis')->where('id', $responsavelId)->first();
+        if (!$atual) {
             return response()->json(['error' => 'Responsável não encontrado.'], 404);
         }
-        $usuarioId = $responsavelAtual->usuario_id;
+        $usuarioId = (int) $atual->usuario_id;
+        $v = $this->validacao;
 
-        // Ativar notificação via WhatsApp exige um telefone cadastrado (é o canal de envio).
-        if ($request->boolean('notificacao_whatsapp_ativa') && $request->has('notificacao_whatsapp_ativa')) {
-            $telefoneFinal = $request->input('telefone', $responsavelAtual->telefone);
-            if (!$telefoneFinal) {
-                return response()->json(['error' => 'Não é possível ativar a notificação via WhatsApp sem um telefone cadastrado.'], 400);
+        // Só valida o que veio. CPF/endereço antigos fora do padrão não travam
+        // a edição de outros campos — mas, se forem enviados, têm que estar certos.
+        $erro = null;
+        if ($request->has('nome_completo') && !$v->texto($request->input('nome_completo'))) {
+            $erro = 'Informe o nome completo.';
+        }
+        if (!$erro && $request->has('email')) {
+            $erro = $v->validarEmail($request->input('email'), $usuarioId);
+        }
+        if (!$erro && $request->filled('senha')) {
+            $erro = $v->validarSenha($request->input('senha'));
+        }
+        if (!$erro && $request->has('cpf') && $v->formatarCpf($request->input('cpf')) !== $atual->cpf) {
+            $erro = $v->validarCpf('responsaveis', $request->input('cpf'), true, $responsavelId);
+        }
+        if (!$erro && $request->has('telefone')) {
+            $erro = $v->validarTelefone($request->input('telefone'), true);
+        }
+        $camposEndereco = ['cep', 'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'uf'];
+        $veioEndereco = collect($camposEndereco)->contains(fn ($c) => $request->has($c));
+        if (!$erro && $veioEndereco) {
+            $erro = $v->validarEndereco(array_merge((array) $atual, $request->only($camposEndereco)), true);
+        }
+        if (!$erro && $request->boolean('notificacao_whatsapp_ativa')) {
+            $tel = $request->has('telefone') ? $request->input('telefone') : $atual->telefone;
+            if (!$v->telefoneValido($tel)) {
+                $erro = 'Não é possível ativar a notificação via WhatsApp sem um telefone válido.';
             }
+        }
+        if ($erro) {
+            return response()->json(['error' => $erro], 422);
         }
 
         $camposUsuario = [];
         if ($request->has('nome_completo')) {
-            $camposUsuario['nome_completo'] = $request->input('nome_completo');
+            $camposUsuario['nome_completo'] = $v->texto($request->input('nome_completo'));
         }
         if ($request->has('email')) {
-            $camposUsuario['email'] = $request->input('email');
+            $camposUsuario['email'] = $v->texto($request->input('email'));
         }
-        if ($request->has('senha')) {
+        if ($request->filled('senha')) {
             $camposUsuario['senha'] = Hash::make($request->input('senha'));
         }
         if ($request->has('ativo')) {
-            $camposUsuario['ativo'] = $request->input('ativo');
+            $camposUsuario['ativo'] = $request->boolean('ativo') ? 1 : 0;
         }
 
         $camposResp = [];
-        foreach (['cpf', 'profissao', 'telefone'] as $campo) {
-            if ($request->has($campo)) {
-                $camposResp[$campo] = $request->input($campo);
-            }
+        if ($request->has('cpf')) {
+            $camposResp['cpf'] = $v->formatarCpf($request->input('cpf'));
+        }
+        if ($request->has('telefone')) {
+            $camposResp['telefone'] = $camposUsuario['telefone'] = $v->telefone($request->input('telefone'));
+        }
+        if ($request->has('profissao')) {
+            $camposResp['profissao'] = $v->texto($request->input('profissao'));
         }
         if ($request->has('notificacao_whatsapp_ativa')) {
             $camposResp['notificacao_whatsapp_ativa'] = $request->boolean('notificacao_whatsapp_ativa') ? 1 : 0;
         }
-        // Endereço — usado pra emissão de boleto (Financeiro > Convênio Bancário).
-        foreach (['endereco', 'bairro', 'cidade', 'uf', 'cep'] as $campo) {
-            if ($request->has($campo)) {
-                $camposResp[$campo] = $request->input($campo);
-            }
+        if ($veioEndereco) {
+            $camposResp += array_intersect_key($v->endereco($request->all()), array_flip(array_keys($request->only($camposEndereco))));
         }
 
         if (!$camposUsuario && !$camposResp) {
@@ -216,7 +244,7 @@ class ResponsavelController extends Controller
                 }
             });
         } catch (\Throwable $e) {
-            return response()->json(['error' => 'Falha ao atualizar responsável.', 'message' => $e->getMessage()], 500);
+            return response()->json(['error' => $v->mensagemDuplicidade($e) ?? 'Falha ao atualizar responsável.', 'message' => $e->getMessage()], 422);
         }
 
         return response()->json(['success' => 'Responsável atualizado com sucesso.']);
@@ -257,7 +285,7 @@ class ResponsavelController extends Controller
             $arr = (array) $row;
             $arr['principal'] = (bool) $row->principal;
             $arr['ativo'] = (bool) $row->ativo;
-            $arr['foto_path'] = !empty($row->foto_path) ? self::FOTO_BASE_URL . $row->foto_path : null;
+            $arr['foto_path'] = \App\Services\Alunos\FotoAlunoService::url($row->foto_path);
 
             return $arr;
         }, $rows);
@@ -311,8 +339,8 @@ class ResponsavelController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem vincular responsáveis a alunos.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem vincular responsáveis a alunos.'], 403);
         }
 
         $responsavelId = $request->input('responsavel_id');
@@ -346,5 +374,20 @@ class ResponsavelController extends Controller
         }
 
         return response()->json(['error' => 'Nenhuma operação válida executada.'], 400);
+    }
+
+    /** Painel da família (home do responsável) — só os próprios dependentes. */
+    public function painel(Request $request): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
+        if (empty(array_intersect(['Responsável', 'Responsavel'], $funcoes))) {
+            return response()->json(['error' => 'Painel exclusivo para responsáveis.'], 403);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => app(\App\Services\Responsaveis\PainelResponsavelService::class)->gerar((int) ($jwtUser->id ?? 0)),
+        ]);
     }
 }
