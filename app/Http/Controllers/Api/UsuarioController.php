@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Hash;
  * Fix vs. legado: get_users.php não tinha NENHUMA verificação de papel aplicada
  * (só um comentário "Opcional: verificar se é Admin", nunca ativado) — qualquer
  * usuário autenticado (professor, responsável) conseguia listar email e último
- * login de todo mundo. Aqui a checagem "Apenas administradores" ficou de fato
+ * login de todo mundo. Aqui a checagem "Apenas a administração/direção" ficou de fato
  * aplicada, como create/update/patch_status já faziam.
  */
 class UsuarioController extends Controller
@@ -23,7 +23,7 @@ class UsuarioController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
             return response()->json(['error' => 'Acesso negado. Requer função de Administração.'], 403);
         }
 
@@ -31,7 +31,7 @@ class UsuarioController extends Controller
             ->leftJoin('usuario_funcao as uf', 'u.id', '=', 'uf.usuario_id')
             ->leftJoin('funcoes as f', 'uf.funcao_id', '=', 'f.id')
             ->orderBy('u.id')->orderBy('f.nome_funcao')
-            ->get(['u.id', 'u.nome_completo', 'u.email', 'u.data_cadastro', 'u.ativo', 'u.ultimo_login', 'f.nome_funcao']);
+            ->get(['u.id', 'u.nome_completo', 'u.email', 'u.telefone', 'u.data_cadastro', 'u.ativo', 'u.ultimo_login', 'f.nome_funcao']);
 
         $users = [];
         foreach ($rows as $row) {
@@ -40,6 +40,7 @@ class UsuarioController extends Controller
                     'id' => $row->id,
                     'nome_completo' => $row->nome_completo,
                     'email' => $row->email,
+                    'telefone' => $row->telefone,
                     'data_cadastro' => $row->data_cadastro,
                     'ativo' => (bool) $row->ativo,
                     'ultimo_login' => $row->ultimo_login,
@@ -58,7 +59,7 @@ class UsuarioController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
             return response()->json(['error' => 'Acesso negado. Requer função de Administração.'], 403);
         }
 
@@ -67,16 +68,26 @@ class UsuarioController extends Controller
         $senhaBruta = $request->input('senha');
         $funcoesIds = $request->input('funcoes_ids', []);
 
+        if ($erro = $this->checarPapelAdministrador($funcoes, null, (array) $funcoesIds)) {
+            return response()->json(['error' => $erro], 403);
+        }
+
         if (!$nomeCompleto || !$email || !$senhaBruta || empty($funcoesIds)) {
             return response()->json(['error' => 'Campos obrigatórios: nome_completo, email, senha e ao menos uma função.'], 400);
         }
+        $v = app(\App\Services\Cadastro\CadastroValidacaoService::class);
+        if ($erro = $v->validarEmail($email) ?? $v->validarSenha($senhaBruta) ?? $v->validarTelefone($request->input('telefone'), false)) {
+            return response()->json(['error' => $erro], 422);
+        }
+        $telefone = $v->telefone($request->input('telefone'));
 
         try {
-            $usuarioId = DB::transaction(function () use ($nomeCompleto, $email, $senhaBruta, $funcoesIds) {
+            $usuarioId = DB::transaction(function () use ($nomeCompleto, $email, $senhaBruta, $funcoesIds, $telefone) {
                 $usuarioId = DB::table('usuarios')->insertGetId([
                     'nome_completo' => $nomeCompleto,
                     'email' => $email,
                     'senha' => Hash::make($senhaBruta),
+                    'telefone' => $telefone,
                     'data_cadastro' => now(),
                     'ativo' => 1,
                 ]);
@@ -101,13 +112,16 @@ class UsuarioController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
             return response()->json(['error' => 'Acesso negado. Requer função de Administração.'], 403);
         }
 
         $usuarioId = $request->input('usuario_id');
         if (!$usuarioId) {
             return response()->json(['error' => 'O campo usuario_id é obrigatório.'], 400);
+        }
+        if ($erro = $this->checarPapelAdministrador($funcoes, (int) $usuarioId, $request->has('funcoes_ids') ? (array) $request->input('funcoes_ids') : null)) {
+            return response()->json(['error' => $erro], 403);
         }
 
         $campos = [];
@@ -117,11 +131,21 @@ class UsuarioController extends Controller
         if ($request->has('email')) {
             $campos['email'] = $request->input('email');
         }
-        if ($request->has('senha')) {
+        if ($request->filled('senha')) {
             $campos['senha'] = Hash::make($request->input('senha'));
         }
         if ($request->has('ativo')) {
             $campos['ativo'] = $request->input('ativo');
+        }
+        $v = app(\App\Services\Cadastro\CadastroValidacaoService::class);
+        if ($request->has('telefone')) {
+            $campos['telefone'] = $v->telefone($request->input('telefone'));
+        }
+        $erro = ($request->has('email') ? $v->validarEmail($request->input('email'), (int) $usuarioId) : null)
+            ?? ($request->filled('senha') ? $v->validarSenha($request->input('senha')) : null)
+            ?? ($request->has('telefone') ? $v->validarTelefone($request->input('telefone'), false) : null);
+        if ($erro) {
+            return response()->json(['error' => $erro], 422);
         }
 
         if (empty($campos) && !$request->has('funcoes_ids')) {
@@ -159,8 +183,8 @@ class UsuarioController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem alterar o status de um usuário.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem alterar o status de um usuário.'], 403);
         }
 
         $usuarioId = $request->input('usuario_id');
@@ -176,6 +200,9 @@ class UsuarioController extends Controller
         if (!DB::table('usuarios')->where('id', $usuarioId)->exists()) {
             return response()->json(['error' => "Usuário ID $usuarioId não encontrado."], 404);
         }
+        if ($erro = $this->checarPapelAdministrador($funcoes, (int) $usuarioId, null)) {
+            return response()->json(['error' => $erro], 403);
+        }
 
         $atual = DB::table('usuarios')->where('id', $usuarioId)->value('ativo');
         DB::table('usuarios')->where('id', $usuarioId)->update(['ativo' => $ativo]);
@@ -187,5 +214,25 @@ class UsuarioController extends Controller
         $statusDesc = $ativo == 1 ? 'Ativo' : 'Inativo';
 
         return response()->json(['success' => "Status do usuário ID $usuarioId atualizado para $statusDesc."]);
+    }
+
+    /**
+     * A Diretoria gerencia usuários, mas não mexe em quem é Administrador nem
+     * concede/retira esse papel — só um Administrador pode.
+     */
+    private function checarPapelAdministrador(array $funcoesQuemFaz, ?int $alvoId, ?array $novasFuncoesIds): ?string
+    {
+        if (\App\Support\Papeis::ehAdministrador($funcoesQuemFaz)) {
+            return null;
+        }
+        $adminId = (int) DB::table('funcoes')->where('nome_funcao', 'Administrador')->value('id');
+        $alvoEhAdmin = $alvoId && DB::table('usuario_funcao')->where('usuario_id', $alvoId)->where('funcao_id', $adminId)->exists();
+        if ($alvoEhAdmin) {
+            return 'Somente um Administrador pode alterar um usuário Administrador.';
+        }
+        if ($novasFuncoesIds !== null && in_array($adminId, array_map('intval', $novasFuncoesIds), true)) {
+            return 'Somente um Administrador pode conceder o papel Administrador.';
+        }
+        return null;
     }
 }

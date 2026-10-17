@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Avaliacoes\ProfessorResolver;
+use App\Services\Avaliacoes\ModeloAvaliacaoService;
 use App\Services\Sistema\LogSistemaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,17 +22,65 @@ class AvaliacaoController extends Controller
     public function __construct(
         private ProfessorResolver $professores,
         private LogSistemaService $log,
+        private ModeloAvaliacaoService $modelos,
     ) {
     }
 
-    public function tiposAvaliacao(): JsonResponse
+    /**
+     * Todos os tipos com o modelo a que pertencem (inclusive de modelos
+     * inativos — avaliações antigas continuam filtráveis).
+     *
+     * Com ?turma_id, cada tipo traz `aplicavel` (modelo ativo e válido para a
+     * turma). Com ?turma_id&disciplina_id&unidade_letiva_id, também considera
+     * o modelo já em uso na disciplina/bimestre e os tipos já lançados, e
+     * devolve `situacao` (pontos lançados e o que falta para fechar 10).
+     * ?avaliacao_id = avaliação em edição (não conta como já lançada).
+     */
+    public function tiposAvaliacao(Request $request): JsonResponse
     {
-        $tipos = DB::table('tipos_avaliacao')
-            ->orderByDesc('peso')
-            ->orderBy('nome_tipo')
-            ->get(['id', 'nome_tipo', 'peso']);
+        $turmaId = (int) $request->query('turma_id') ?: null;
+        $disciplinaId = (int) $request->query('disciplina_id') ?: null;
+        $unidadeId = (int) $request->query('unidade_letiva_id') ?: null;
+        $exceto = (int) $request->query('avaliacao_id') ?: null;
 
-        return response()->json(['success' => true, 'count' => $tipos->count(), 'data' => $tipos]);
+        $modelosTurma = $turmaId ? $this->modelos->modelosDaTurma($turmaId) : null;
+        $situacao = ($turmaId && $disciplinaId && $unidadeId)
+            ? $this->modelos->situacao($turmaId, $disciplinaId, $unidadeId, $exceto)
+            : null;
+
+        $tipos = DB::table('tipos_avaliacao as t')
+            ->leftJoin('modelos_avaliacao as m', 'm.id', '=', 't.modelo_avaliacao_id')
+            ->orderByDesc('m.padrao')
+            ->orderBy('m.nome')
+            ->orderBy('t.ordem')
+            ->get(['t.id', 't.nome_tipo', 't.peso', 't.cor', 't.modelo_avaliacao_id', 'm.nome as modelo_nome', 'm.ativo as modelo_ativo'])
+            ->map(function ($t) use ($modelosTurma, $situacao) {
+                $modeloId = $t->modelo_avaliacao_id ? (int) $t->modelo_avaliacao_id : null;
+                $aplicavel = $modelosTurma === null
+                    ? (bool) $t->modelo_ativo
+                    : in_array($modeloId, $modelosTurma, true);
+                if ($aplicavel && $situacao) {
+                    $aplicavel = (!$situacao['modelo_id'] || $situacao['modelo_id'] === $modeloId)
+                        && !in_array((int) $t->id, $situacao['tipos_usados'], true);
+                }
+                return [
+                    'id'                  => (int) $t->id,
+                    'nome_tipo'           => $t->nome_tipo,
+                    'peso'                => (int) $t->peso,
+                    'cor'                 => $t->cor,
+                    'modelo_avaliacao_id' => $modeloId,
+                    'modelo_nome'         => $t->modelo_nome,
+                    'modelo_ativo'        => (bool) $t->modelo_ativo,
+                    'aplicavel'           => $aplicavel,
+                ];
+            });
+
+        return response()->json([
+            'success'  => true,
+            'count'    => $tipos->count(),
+            'data'     => $tipos,
+            'situacao' => $situacao,
+        ]);
     }
 
     public function unidadesLetivas(Request $request): JsonResponse
@@ -54,7 +103,7 @@ class AvaliacaoController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
 
-        $isAdmin = in_array('Administrador', $funcoes, true);
+        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
         $isProfessor = in_array('Professor', $funcoes, true);
         $isResponsavel = in_array('Responsável', $funcoes, true) || in_array('Responsavel', $funcoes, true);
 
@@ -153,7 +202,7 @@ class AvaliacaoController extends Controller
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
         $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = in_array('Administrador', $funcoes, true) || in_array('Diretor', $funcoes, true);
+        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Apenas professores, administradores ou diretores podem cadastrar avaliações.'], 403);
@@ -163,7 +212,8 @@ class AvaliacaoController extends Controller
         $disciplinaId = $request->input('disciplina_id');
         $tipoAvaliacaoId = $request->input('tipo_avaliacao_id');
         $unidadeLetivaId = $request->input('unidade_letiva_id');
-        $descricao = $request->input('descricao');
+        // Descrição é uma observação opcional (coluna NOT NULL → string vazia).
+        $descricao = trim((string) $request->input('descricao', ''));
         $dataAplicacao = $request->input('data_aplicacao');
         $valorMaximo = $request->input('valor_maximo');
 
@@ -180,8 +230,20 @@ class AvaliacaoController extends Controller
             }
         }
 
-        if (!$turmaId || !$disciplinaId || !$tipoAvaliacaoId || !$descricao || !$dataAplicacao || !$valorMaximo || !$unidadeLetivaId) {
-            return response()->json(['error' => 'Campos obrigatórios faltando.', 'message' => 'Turma, Disciplina, Tipo, Unidade Letiva, Descrição, Data de Aplicação e Valor Máximo são obrigatórios.'], 400);
+        if (!$turmaId || !$disciplinaId || !$tipoAvaliacaoId || !$dataAplicacao || !$valorMaximo || !$unidadeLetivaId) {
+            return response()->json(['error' => 'Campos obrigatórios faltando.', 'message' => 'Turma, Disciplina, Tipo, Unidade Letiva, Data de Aplicação e Valor Máximo são obrigatórios.'], 400);
+        }
+
+        if ($congelada = app(\App\Services\Turmas\TurmaSituacaoService::class)->bloqueio((int) $turmaId)) {
+            return $congelada;
+        }
+        if ($erroUnidade = $this->erroUnidadeDeOutroAno((int) $unidadeLetivaId, (int) $turmaId)) {
+            return $erroUnidade;
+        }
+
+        $bloqueio = $this->modelos->motivoBloqueio((int) $tipoAvaliacaoId, (int) $turmaId, (int) $disciplinaId, (int) $unidadeLetivaId);
+        if ($bloqueio) {
+            return response()->json(['error' => 'Tipo de avaliação indisponível.', 'message' => $bloqueio], 422);
         }
 
         $duplicada = DB::table('avaliacoes')
@@ -217,7 +279,7 @@ class AvaliacaoController extends Controller
 
         $this->log->registrar(
             $request, $usuarioId, $username, 'CRIACAO_AVALIACAO', '/api/avaliacoes', 'POST',
-            "Avaliação #$novoId criada: \"$descricao\" (turma #$turmaId, disciplina #$disciplinaId)",
+            "Avaliação #$novoId criada" . ($descricao !== '' ? ": \"$descricao\"" : '') . " (turma #$turmaId, disciplina #$disciplinaId)",
             201,
             ['avaliacao_id' => $novoId, 'turma_id' => $turmaId, 'disciplina_id' => $disciplinaId, 'tipo_avaliacao_id' => $tipoAvaliacaoId]
         );
@@ -236,7 +298,7 @@ class AvaliacaoController extends Controller
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
         $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = in_array('Administrador', $funcoes, true) || in_array('Diretor', $funcoes, true);
+        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Apenas professores, administradores ou diretores podem editar avaliações.'], 403);
@@ -255,6 +317,10 @@ class AvaliacaoController extends Controller
             return response()->json(['error' => 'Avaliação não encontrada.'], 404);
         }
 
+        if ($congelada = app(\App\Services\Turmas\TurmaSituacaoService::class)->bloqueio((int) $avaliacaoAtual->turma_id)) {
+            return $congelada;
+        }
+
         $notasCount = DB::table('notas')->where('avaliacao_id', $avaliacaoId)->count();
 
         $professorIdLogado = $isProfessor ? $this->professores->idDoUsuario($usuarioId) : null;
@@ -271,15 +337,36 @@ class AvaliacaoController extends Controller
         $disciplinaId = $request->input('disciplina_id');
         $tipoAvaliacaoId = $request->input('tipo_avaliacao_id');
         $unidadeLetivaId = $request->input('unidade_letiva_id');
-        $descricao = $request->input('descricao');
+        // Descrição é uma observação opcional (coluna NOT NULL → string vazia).
+        $descricao = trim((string) $request->input('descricao', ''));
         $dataAplicacao = $request->input('data_aplicacao');
         $valorMaximo = $request->input('valor_maximo');
 
-        if (!$disciplinaId || !$tipoAvaliacaoId || !$descricao || !$dataAplicacao || !$valorMaximo || !$unidadeLetivaId) {
-            return response()->json(['error' => 'Campos obrigatórios faltando.', 'message' => 'Disciplina, Tipo, Unidade Letiva, Descrição, Data de Aplicação e Valor Máximo são obrigatórios.'], 400);
+        if (!$disciplinaId || !$tipoAvaliacaoId || !$dataAplicacao || !$valorMaximo || !$unidadeLetivaId) {
+            return response()->json(['error' => 'Campos obrigatórios faltando.', 'message' => 'Disciplina, Tipo, Unidade Letiva, Data de Aplicação e Valor Máximo são obrigatórios.'], 400);
         }
 
         $turmaId = (int) $avaliacaoAtual->turma_id;
+
+        if ($congelada = app(\App\Services\Turmas\TurmaSituacaoService::class)->bloqueio($turmaId)) {
+            return $congelada;
+        }
+        if ($erroUnidade = $this->erroUnidadeDeOutroAno((int) $unidadeLetivaId, $turmaId)) {
+            return $erroUnidade;
+        }
+
+        // Mudou tipo, disciplina ou bimestre → precisa respeitar o modelo da
+        // disciplina/bimestre de destino. Manter tudo igual é sempre permitido
+        // (mesmo que o modelo tenha sido desativado depois).
+        $mudouEncaixe = (int) $tipoAvaliacaoId !== (int) $avaliacaoAtual->tipo_avaliacao_id
+            || (int) $disciplinaId !== (int) $avaliacaoAtual->disciplina_id
+            || (int) $unidadeLetivaId !== (int) $avaliacaoAtual->unidade_letiva_id;
+        if ($mudouEncaixe) {
+            $bloqueio = $this->modelos->motivoBloqueio((int) $tipoAvaliacaoId, $turmaId, (int) $disciplinaId, (int) $unidadeLetivaId, $avaliacaoId);
+            if ($bloqueio) {
+                return response()->json(['error' => 'Tipo de avaliação indisponível.', 'message' => $bloqueio], 422);
+            }
+        }
 
         if ($isAdmin) {
             $professorIdFinal = $request->input('professor_id', $avaliacaoAtual->professor_id);
@@ -322,7 +409,7 @@ class AvaliacaoController extends Controller
 
         $this->log->registrar(
             $request, $usuarioId, $username, 'ATUALIZACAO_AVALIACAO', '/api/avaliacoes', 'PUT',
-            "Avaliação #$avaliacaoId atualizada: \"$descricao\"",
+            "Avaliação #$avaliacaoId atualizada" . ($descricao !== '' ? ": \"$descricao\"" : ''),
             200,
             ['avaliacao_id' => $avaliacaoId, 'turma_id' => $turmaId, 'disciplina_id' => $disciplinaId, 'tipo_avaliacao_id' => $tipoAvaliacaoId]
         );
@@ -337,7 +424,7 @@ class AvaliacaoController extends Controller
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
         $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = in_array('Administrador', $funcoes, true) || in_array('Diretor', $funcoes, true);
+        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Apenas professores, administradores ou diretores podem excluir avaliações.'], 403);
@@ -352,6 +439,10 @@ class AvaliacaoController extends Controller
         $avaliacaoAtual = DB::table('avaliacoes')->where('id', $avaliacaoId)->first(['descricao', 'turma_id', 'professor_id']);
         if (!$avaliacaoAtual) {
             return response()->json(['error' => 'Avaliação não encontrada.'], 404);
+        }
+
+        if ($congelada = app(\App\Services\Turmas\TurmaSituacaoService::class)->bloqueio((int) $avaliacaoAtual->turma_id)) {
+            return $congelada;
         }
 
         $notasCount = DB::table('notas')->where('avaliacao_id', $avaliacaoId)->count();
@@ -370,12 +461,29 @@ class AvaliacaoController extends Controller
 
         $this->log->registrar(
             $request, $usuarioId, $username, 'EXCLUSAO_AVALIACAO', '/api/avaliacoes', 'DELETE',
-            "Avaliação #$avaliacaoId excluída: \"{$avaliacaoAtual->descricao}\"",
+            "Avaliação #$avaliacaoId excluída" . ($avaliacaoAtual->descricao !== '' ? ": \"{$avaliacaoAtual->descricao}\"" : ''),
             200,
             ['avaliacao_id' => $avaliacaoId, 'turma_id' => $avaliacaoAtual->turma_id]
         );
 
         return response()->json(['success' => 'Avaliação excluída com sucesso.']);
+    }
+
+    /** Bimestre (unidade letiva) precisa ser do mesmo ano letivo da turma. */
+    private function erroUnidadeDeOutroAno(int $unidadeLetivaId, int $turmaId): ?JsonResponse
+    {
+        $anoUnidade = DB::table('unidades_letivas')->where('id', $unidadeLetivaId)->value('ano_letivo');
+        $anoTurma = DB::table('turmas')->where('id', $turmaId)->value('ano_letivo');
+        if ($anoUnidade === null) {
+            return response()->json(['error' => 'Unidade letiva não encontrada.'], 404);
+        }
+        if ((int) $anoUnidade !== (int) $anoTurma) {
+            return response()->json([
+                'error'   => 'Bimestre de outro ano.',
+                'message' => "O bimestre escolhido é de {$anoUnidade}, mas a turma é de {$anoTurma}.",
+            ], 422);
+        }
+        return null;
     }
 
     /**

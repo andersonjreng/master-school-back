@@ -31,7 +31,7 @@ class NotaController extends Controller
 
         $sql = '
             SELECT
-                n.nota_valor, av.descricao AS nome_avaliacao, av.valor_maximo,
+                n.nota_valor, COALESCE(NULLIF(av.descricao, ""), ta.nome_tipo) AS nome_avaliacao, av.valor_maximo,
                 d.nome_disciplina, ul.nome_unidade,
                 ta.nome_tipo AS tipo_avaliacao, ta.peso AS peso_avaliacao
             FROM notas n
@@ -57,7 +57,7 @@ class NotaController extends Controller
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
         $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdminOuDiretor = in_array('Administrador', $funcoes, true) || in_array('Diretor', $funcoes, true);
+        $isAdminOuDiretor = \App\Support\Papeis::ehGestor($funcoes);
 
         if (!$isProfessor && !$isAdminOuDiretor) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Apenas professores, administradores ou diretores podem visualizar notas para lançamento.'], 403);
@@ -73,17 +73,20 @@ class NotaController extends Controller
             return response()->json(['error' => 'Avaliação não encontrada ou sem turma associada.'], 404);
         }
 
-        $rows = DB::select('
+        $situacao = app(\App\Services\Turmas\TurmaSituacaoService::class);
+        $tabela = $situacao->tabelaRoster((int) $turmaId);
+        $filtroAtivo = $situacao->incluiInativos((int) $turmaId) ? '' : 'AND U.ativo = 1';
+        $rows = DB::select("
             SELECT
                 A.id AS aluno_id, A.matricula, U.nome_completo AS nome_aluno,
                 N.nota_valor, N.id AS nota_id, N.segunda_chamada
-            FROM turma_aluno TA
+            FROM {$tabela} TA
             JOIN alunos A ON TA.aluno_id = A.id
             JOIN usuarios U ON A.usuario_id = U.id
             LEFT JOIN notas N ON N.aluno_id = A.id AND N.avaliacao_id = ?
-            WHERE TA.turma_id = ? AND U.ativo = 1
+            WHERE TA.turma_id = ? {$filtroAtivo}
             ORDER BY U.nome_completo ASC
-        ', [$avaliacaoId, $turmaId]);
+        ", [$avaliacaoId, $turmaId]);
 
         $alunos = array_map(fn ($row) => [
             'aluno_id'        => (int) $row->aluno_id,
@@ -123,73 +126,70 @@ class NotaController extends Controller
             return response()->json(['error' => 'Turma, Disciplina, Unidade Letiva e Ano Letivo são obrigatórios.'], 400);
         }
 
-        $rows = DB::select("
-            SELECT
-                al.id AS aluno_id, u.nome_completo AS nome_aluno, d.nome_disciplina AS nome_disciplina,
-                GROUP_CONCAT(av_header.id, ':', ta.nome_tipo, ' (', ta.peso, ')', ':', av_header.valor_maximo
-                    ORDER BY ta.peso DESC SEPARATOR '|') AS avaliacoes_header,
-                GROUP_CONCAT(n.avaliacao_id, ':', IFNULL(n.nota_valor, 0.0), ':', IFNULL(n.id, 0)
-                    ORDER BY ta.peso DESC SEPARATOR '|') AS notas_lancadas,
-                SUM(n.nota_valor) AS media_bimestral
-            FROM alunos al
-            JOIN usuarios u ON al.usuario_id = u.id
-            JOIN (SELECT DISTINCT aluno_id, turma_id FROM matriculas) ta_aluno
-                ON al.id = ta_aluno.aluno_id AND ta_aluno.turma_id = ?
-            JOIN avaliacoes av_header
-                ON av_header.turma_id = ? AND av_header.disciplina_id = ? AND av_header.unidade_letiva_id = ?
-            JOIN unidades_letivas ul ON av_header.unidade_letiva_id = ul.id AND ul.ano_letivo = ?
-            JOIN tipos_avaliacao ta ON av_header.tipo_avaliacao_id = ta.id
-            JOIN disciplinas d ON av_header.disciplina_id = d.id
-            LEFT JOIN notas n ON al.id = n.aluno_id AND n.avaliacao_id = av_header.id
-            WHERE ta_aluno.turma_id = ?
-            GROUP BY al.id, u.nome_completo, d.nome_disciplina
-            ORDER BY u.nome_completo
-        ", [$turmaId, $turmaId, $disciplinaId, $unidadeId, $anoLetivo, $turmaId]);
+        // Média = mesma regra do boletim (MediaBimestralService): Σ(nota ÷ valor
+        // máximo × peso) ÷ 10, escala 0–10, só avaliações com nota. Antes esta
+        // tela somava os pontos (escala 0–100) e divergia do boletim.
+        $avaliacoes = DB::table('avaliacoes as av')
+            ->join('unidades_letivas as ul', 'ul.id', '=', 'av.unidade_letiva_id')
+            ->join('tipos_avaliacao as ta', 'ta.id', '=', 'av.tipo_avaliacao_id')
+            ->where('av.turma_id', $turmaId)->where('av.disciplina_id', $disciplinaId)
+            ->where('av.unidade_letiva_id', $unidadeId)->where('ul.ano_letivo', $anoLetivo)
+            ->orderByDesc('ta.peso')->orderBy('av.data_aplicacao')->orderBy('av.id')
+            ->get(['av.id', 'av.valor_maximo', 'av.data_aplicacao', 'ta.nome_tipo', 'ta.peso']);
 
-        $avaliacoesHeaderFinal = [];
-        $nomeDisciplina = '';
+        $nomeDisciplina = (string) DB::table('disciplinas')->where('id', $disciplinaId)->value('nome_disciplina');
+        $medias = app(\App\Services\Avaliacoes\MediaBimestralService::class);
+
+        $alunos = DB::table('alunos as al')
+            ->join('usuarios as u', 'u.id', '=', 'al.usuario_id')
+            ->whereIn('al.id', DB::table('matriculas')->where('turma_id', $turmaId)->select('aluno_id'))
+            ->orderBy('u.nome_completo')
+            ->get(['al.id', 'u.nome_completo']);
+
+        $notas = $avaliacoes->isNotEmpty() && $alunos->isNotEmpty()
+            ? DB::table('notas')->whereIn('avaliacao_id', $avaliacoes->pluck('id'))->whereIn('aluno_id', $alunos->pluck('id'))
+                ->orderBy('id')->get(['id', 'aluno_id', 'avaliacao_id', 'nota_valor'])
+                ->keyBy(fn ($n) => $n->aluno_id . ':' . $n->avaliacao_id)
+            : collect();
+
         $gradeDados = [];
-
-        foreach ($rows as $row) {
-            if ($nomeDisciplina === '') {
-                $nomeDisciplina = $row->nome_disciplina;
-            }
-
-            if (!$avaliacoesHeaderFinal && $row->avaliacoes_header) {
-                foreach (explode('|', $row->avaliacoes_header) as $avaliacaoStr) {
-                    [$id, $nome, $max] = explode(':', $avaliacaoStr);
-                    if (!isset($avaliacoesHeaderFinal[$id])) {
-                        $avaliacoesHeaderFinal[$id] = ['id' => (int) $id, 'nome' => $nome, 'valor_maximo' => (float) $max];
-                    }
-                }
-                $avaliacoesHeaderFinal = array_values($avaliacoesHeaderFinal);
-            }
-
-            $alunoData = [
-                'aluno_id'        => $row->aluno_id,
-                'nome_aluno'      => $row->nome_aluno,
-                'notas'           => [],
-                'media_bimestral' => round((float) ($row->media_bimestral ?? 0), 2),
-            ];
-
-            if ($row->notas_lancadas) {
-                foreach (explode('|', $row->notas_lancadas) as $notaStr) {
-                    [$avaliacaoId, $notaValor, $notaRegistroId] = explode(':', $notaStr);
-                    $alunoData['notas'][] = [
-                        'avaliacao_id'      => (int) $avaliacaoId,
-                        'nota_valor'        => round((float) $notaValor, 2),
-                        'nota_registro_id'  => (int) $notaRegistroId,
+        foreach ($alunos as $al) {
+            $itens = [];
+            $notasAluno = [];
+            foreach ($avaliacoes as $av) {
+                $n = $notas->get($al->id . ':' . $av->id);
+                $valor = $n && $n->nota_valor !== null ? (float) $n->nota_valor : null;
+                $itens[] = ['nota' => $valor, 'valor_maximo' => (float) $av->valor_maximo, 'peso' => (float) $av->peso];
+                if ($n) {
+                    $notasAluno[] = [
+                        'avaliacao_id'     => (int) $av->id,
+                        'nota_valor'       => round((float) ($n->nota_valor ?? 0), 2),
+                        'nota_registro_id' => (int) $n->id,
                     ];
                 }
             }
-
-            $gradeDados[] = $alunoData;
+            $gradeDados[] = [
+                'aluno_id'        => (int) $al->id,
+                'nome_aluno'      => $al->nome_completo,
+                'notas'           => $notasAluno,
+                'media_bimestral' => $medias->media($itens),
+                'peso_avaliado'   => $medias->pesoAvaliado($itens),
+            ];
         }
 
         return response()->json([
-            'disciplina'  => $nomeDisciplina,
-            'avaliacoes'  => $avaliacoesHeaderFinal,
-            'alunos'      => $gradeDados,
+            'disciplina'   => $nomeDisciplina,
+            'avaliacoes'   => $avaliacoes->map(fn ($av) => [
+                'id'           => (int) $av->id,
+                'nome'         => "{$av->nome_tipo} ({$av->peso})",
+                'tipo'         => $av->nome_tipo,
+                'peso'         => (int) $av->peso,
+                'valor_maximo' => (float) $av->valor_maximo,
+                'data'         => substr((string) $av->data_aplicacao, 0, 10),
+            ])->values()->all(),
+            'alunos'       => $gradeDados,
+            'peso_total'   => (int) $avaliacoes->sum('peso'),
+            'media_minima' => $medias->mediaMinima((int) $turmaId),
         ]);
     }
 
@@ -390,7 +390,7 @@ class NotaController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (empty(array_intersect(['Administrador', 'Professor', 'Diretor'], $funcoes))) {
+        if (empty(array_intersect(['Administrador', 'Diretoria', 'Professor'], $funcoes))) {
             return response()->json(['error' => 'Acesso negado. Apenas professores e administradores podem lançar notas.'], 403);
         }
 
@@ -404,6 +404,11 @@ class NotaController extends Controller
         $valorMaximo = DB::table('avaliacoes')->where('id', $avaliacaoId)->value('valor_maximo');
         if ($valorMaximo === null) {
             return response()->json(['error' => 'Avaliação não encontrada.'], 404);
+        }
+
+        $situacao = app(\App\Services\Turmas\TurmaSituacaoService::class);
+        if ($bloqueio = $situacao->bloqueio((int) $situacao->turmaDaAvaliacao($avaliacaoId))) {
+            return $bloqueio;
         }
         $valorMaximo = (float) $valorMaximo;
 
@@ -466,7 +471,7 @@ class NotaController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (empty(array_intersect(['Administrador', 'Professor', 'Diretor'], $funcoes))) {
+        if (empty(array_intersect(['Administrador', 'Diretoria', 'Professor'], $funcoes))) {
             return response()->json(['error' => 'Acesso negado. Apenas professores e administradores podem editar notas.'], 403);
         }
 
@@ -485,12 +490,10 @@ class NotaController extends Controller
             return response()->json(['error' => 'A nota não pode ser negativa.'], 400);
         }
 
-        $turma = DB::table('turmas')->where('id', $turmaId)->first(['status', 'ano_letivo']);
-        if (!$turma || strtolower($turma->status) !== 'ativa') {
-            return response()->json(['error' => 'Não é possível editar notas de uma turma inativa.'], 403);
-        }
-        if ((int) $turma->ano_letivo !== (int) now()->year) {
-            return response()->json(['error' => 'Só é possível editar notas de turmas do ano letivo vigente.'], 403);
+        // Antes também exigia ano letivo == ano do relógio, o que bloquearia a
+        // recuperação de 2026 em janeiro de 2027. O que vale é a turma estar ativa.
+        if ($bloqueio = app(\App\Services\Turmas\TurmaSituacaoService::class)->bloqueio((int) $turmaId)) {
+            return $bloqueio;
         }
 
         $avaliacao = DB::table('avaliacoes')->where('id', $avaliacaoId)->where('turma_id', $turmaId)->first(['valor_maximo']);

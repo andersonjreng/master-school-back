@@ -23,12 +23,127 @@ use Illuminate\Support\Facades\DB;
  */
 class RemessaSicoobService
 {
+    /** Boleto ainda "vivo" no banco — impede gerar outro para a mesma parcela. */
+    public const BOLETO_ATIVO = ['gerado', 'enviado', 'registrado'];
+
     public function __construct(
         private ConvenioCobrancaService $convenios,
         private EscolaConfigService $escolaConfig,
         private FinanceiroHelperService $financeiro,
         private CnabEncodingService $cnab,
     ) {
+    }
+
+    /**
+     * Confere se a parcela pode virar boleto agora.
+     *
+     * @return array{ok: bool, motivo: ?string, parcela: ?object, responsavel: ?array, cpf: ?string}
+     */
+    public function validarParcela(int $parcelaId): array
+    {
+        $falha = fn (string $motivo, $parcela = null, $responsavel = null) => [
+            'ok' => false, 'motivo' => $motivo, 'parcela' => $parcela, 'responsavel' => $responsavel, 'cpf' => null,
+        ];
+
+        $parcela = DB::table('parcelas as p')
+            ->join('alunos as a', 'a.id', '=', 'p.aluno_id')
+            ->where('p.id', $parcelaId)
+            ->first(['p.id', 'p.valor_final', 'p.data_vencimento', 'p.status', 'p.aluno_id']);
+
+        if (!$parcela) {
+            return $falha('Parcela não encontrada.');
+        }
+        if (!in_array($parcela->status, ['pendente', 'vencido'], true)) {
+            return $falha("Parcela com status '{$parcela->status}' não pode gerar boleto.", $parcela);
+        }
+        if (DB::table('boletos_bancarios')->where('parcela_id', $parcelaId)->whereIn('status', self::BOLETO_ATIVO)->exists()) {
+            return $falha('Já existe um boleto ativo para esta parcela.', $parcela);
+        }
+
+        $responsavel = $this->financeiro->buscarResponsavelPagador((int) $parcela->aluno_id);
+        if (!$responsavel) {
+            return $falha('Aluno sem responsável cadastrado.', $parcela);
+        }
+        $rotulos = ['cpf' => 'CPF', 'endereco' => 'endereço', 'bairro' => 'bairro', 'cidade' => 'cidade', 'uf' => 'UF', 'cep' => 'CEP'];
+        $faltando = array_keys(array_filter($rotulos, fn ($r, $c) => empty($responsavel[$c]), ARRAY_FILTER_USE_BOTH));
+        if ($faltando) {
+            return $falha('Responsável sem ' . implode(', ', array_map(fn ($c) => $rotulos[$c], $faltando)) . ' — obrigatório no boleto.', $parcela, $responsavel);
+        }
+        $cpf = $this->cnab->apenasDigitos($responsavel['cpf']);
+        if (strlen($cpf) !== 11) {
+            return $falha('CPF do responsável inválido.', $parcela, $responsavel);
+        }
+        if (strlen($this->cnab->apenasDigitos($responsavel['cep'])) !== 8) {
+            return $falha('CEP do responsável inválido.', $parcela, $responsavel);
+        }
+
+        return ['ok' => true, 'motivo' => null, 'parcela' => $parcela, 'responsavel' => $responsavel, 'cpf' => $cpf];
+    }
+
+    /**
+     * Prévia da remessa: parcelas em aberto que vencem até hoje + $dias e
+     * ainda não têm boleto ativo, cada uma dizendo se está pronta ou o que
+     * falta corrigir no cadastro.
+     */
+    public function candidatas(int $dias): array
+    {
+        $limite = now()->addDays(max(0, $dias))->toDateString();
+
+        $linhas = DB::table('parcelas as p')
+            ->join('alunos as a', 'a.id', '=', 'p.aluno_id')
+            ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
+            ->leftJoin('turma_aluno as ta', 'ta.aluno_id', '=', 'a.id')
+            ->leftJoin('turmas as t', 't.id', '=', 'ta.turma_id')
+            ->whereIn('p.status', ['pendente', 'vencido'])
+            ->where('p.data_vencimento', '<=', $limite)
+            ->whereNotExists(fn ($q) => $q->from('boletos_bancarios as b')
+                ->whereColumn('b.parcela_id', 'p.id')->whereIn('b.status', self::BOLETO_ATIVO))
+            ->orderBy('p.data_vencimento')
+            ->orderBy('u.nome_completo')
+            ->get(['p.id', 'p.numero_parcela', 'p.valor_final', 'p.data_vencimento', 'p.status', 'a.id as aluno_id',
+                'u.nome_completo as aluno', 't.nome_turma as turma']);
+
+        // Um aluno com 2 vínculos de turma repetiria a parcela: fica a primeira.
+        $vistos = [];
+        $itens = [];
+        foreach ($linhas as $l) {
+            if (isset($vistos[$l->id])) {
+                continue;
+            }
+            $vistos[$l->id] = true;
+            $v = $this->validarParcela((int) $l->id);
+            $itens[] = [
+                'parcela_id'  => (int) $l->id,
+                'aluno_id'    => (int) $l->aluno_id,
+                'aluno'       => $l->aluno,
+                'turma'       => $l->turma,
+                'parcela'     => (int) $l->numero_parcela,
+                'valor'       => (float) $l->valor_final,
+                'vencimento'  => $l->data_vencimento,
+                'vencida'     => $l->status === 'vencido' || $l->data_vencimento < now()->toDateString(),
+                'pronta'      => $v['ok'],
+                'pendencia'   => $v['motivo'],
+                'responsavel' => $v['responsavel']['nome_completo'] ?? null,
+                'responsavel_id' => isset($v['responsavel']['id']) ? (int) $v['responsavel']['id'] : null,
+            ];
+        }
+
+        return $itens;
+    }
+
+    /** Remessa subida no Sicoob Net Empresarial pelo usuário: boletos passam a "enviado". */
+    public function marcarEnviada(int $remessaId, int $usuarioId): void
+    {
+        $remessa = DB::table('remessas_sicoob')->where('id', $remessaId)->first(['id', 'status']);
+        if (!$remessa) {
+            throw new \Exception('Remessa não encontrada.');
+        }
+        DB::transaction(function () use ($remessaId, $usuarioId) {
+            DB::table('remessas_sicoob')->where('id', $remessaId)->update([
+                'status' => 'enviado', 'enviado_em' => now(), 'enviado_por' => $usuarioId,
+            ]);
+            DB::table('boletos_bancarios')->where('remessa_id', $remessaId)->where('status', 'gerado')->update(['status' => 'enviado']);
+        });
     }
 
     /**
@@ -53,24 +168,31 @@ class RemessaSicoobService
             throw new \Exception('Convênio bancário do Sicoob não está cadastrado/ativo. Cadastre em Financeiro > Convênio Bancário.');
         }
 
+        // Conta corrente + DV vão em todo registro de detalhe (posições 23-31) e
+        // NÃO são derivados do código do cedente (no convênio desta escola:
+        // cedente 164274-0, conta 421945-7, confirmado no retorno real) —
+        // melhor travar do que mandar um arquivo pro banco com a conta errada.
+        if (empty($convenio['conta']) || (string) ($convenio['conta_dv'] ?? '') === '') {
+            throw new \Exception('Conta corrente e dígito da conta não cadastrados no convênio — obrigatórios pra remessa.');
+        }
+
         $escola = $this->escolaConfig->obter();
 
+        // DV "0" é um valor válido — empty() trataria como não preenchido.
         $avisos = [];
-        if (empty($convenio['agencia_dv'])) {
+        if ((string) ($convenio['agencia_dv'] ?? '') === '') {
             $avisos[] = 'Dígito verificador da agência não confirmado — usando "0". Confirme com o gerente antes de usar em produção.';
         }
-        if (empty($convenio['codigo_cedente_dv'])) {
+        if ((string) ($convenio['codigo_cedente_dv'] ?? '') === '') {
             $avisos[] = 'Dígito verificador do código do cedente não confirmado — usando "0".';
-        }
-        if (empty($convenio['conta'])) {
-            $avisos[] = 'Campo "conta" não configurado — usando o código do cedente no lugar (comum em convênios Sicoob, mas não confirmado pro convênio desta escola).';
         }
 
         $agenciaDv = $convenio['agencia_dv'] ?: '0';
         $cedenteDv = $convenio['codigo_cedente_dv'] ?: '0';
-        $conta = $convenio['conta'] ?: $convenio['codigo_cedente'];
+        $conta = $convenio['conta'];
+        $contaDv = $convenio['conta_dv'];
 
-        return DB::transaction(function () use ($convenio, $escola, $parcelaIds, $usuarioId, $avisos, $agenciaDv, $cedenteDv, $conta) {
+        return DB::transaction(function () use ($convenio, $escola, $parcelaIds, $usuarioId, $avisos, $agenciaDv, $cedenteDv, $conta, $contaDv) {
             // Trava a linha do convênio pra alocar nosso_numero sem colisão caso
             // duas remessas sejam geradas ao mesmo tempo.
             $proximoNossoNumero = (int) DB::table('convenios_cobranca_bancaria')
@@ -94,7 +216,7 @@ class RemessaSicoobService
                 'codigo_beneficiario' => $convenio['codigo_cedente'],
                 'codigo_beneficiario_dv' => $cedenteDv,
                 'conta' => $conta,
-                'conta_dv' => $cedenteDv,
+                'conta_dv' => $contaDv,
                 'numero_convenio' => ' ',
                 'tipo_inscricao' => 2, // CNPJ (o beneficiário é sempre a escola, pessoa jurídica)
                 'numero_inscricao' => $this->cnab->apenasDigitos($escola['cnpj']),
@@ -106,51 +228,18 @@ class RemessaSicoobService
             $puladas = [];
             $boletosGerados = [];
 
-            foreach ($parcelaIds as $parcelaId) {
-                $parcelaId = (int) $parcelaId;
+            // Repetida na lista viraria 2 boletos pra mesma parcela: validarParcela()
+            // só enxerga boletos já gravados, e aqui eles são gravados depois do loop.
+            foreach (array_unique(array_map('intval', $parcelaIds)) as $parcelaId) {
 
-                $parcela = DB::table('parcelas as p')
-                    ->join('alunos as a', 'a.id', '=', 'p.aluno_id')
-                    ->where('p.id', $parcelaId)
-                    ->first(['p.id', 'p.valor_final', 'p.data_vencimento', 'p.status', 'p.aluno_id']);
-
-                if (!$parcela) {
-                    $puladas[] = ['parcela_id' => $parcelaId, 'motivo' => 'Parcela não encontrada.'];
+                $v = $this->validarParcela($parcelaId);
+                if (!$v['ok']) {
+                    $puladas[] = ['parcela_id' => $parcelaId, 'motivo' => $v['motivo']];
                     continue;
                 }
-                if (!in_array($parcela->status, ['pendente', 'vencido'], true)) {
-                    $puladas[] = ['parcela_id' => $parcelaId, 'motivo' => "Parcela com status '{$parcela->status}' não pode gerar boleto."];
-                    continue;
-                }
-
-                $temBoletoAtivo = DB::table('boletos_bancarios')
-                    ->where('parcela_id', $parcelaId)
-                    ->whereIn('status', ['gerado', 'enviado'])
-                    ->exists();
-                if ($temBoletoAtivo) {
-                    $puladas[] = ['parcela_id' => $parcelaId, 'motivo' => 'Já existe um boleto ativo (gerado ou enviado) para esta parcela.'];
-                    continue;
-                }
-
-                $responsavel = $this->financeiro->buscarResponsavelPagador((int) $parcela->aluno_id);
-                if (!$responsavel) {
-                    $puladas[] = ['parcela_id' => $parcelaId, 'motivo' => 'Aluno sem responsável cadastrado.'];
-                    continue;
-                }
-                $camposEndereco = ['cpf', 'endereco', 'bairro', 'cidade', 'uf', 'cep'];
-                $faltando = array_filter($camposEndereco, fn ($c) => empty($responsavel[$c]));
-                if ($faltando) {
-                    $puladas[] = [
-                        'parcela_id' => $parcelaId,
-                        'motivo' => 'Responsável sem ' . implode(', ', $faltando) . ' cadastrado — obrigatório pro boleto.',
-                    ];
-                    continue;
-                }
-                $cpfDigitos = $this->cnab->apenasDigitos($responsavel['cpf']);
-                if (strlen($cpfDigitos) !== 11) {
-                    $puladas[] = ['parcela_id' => $parcelaId, 'motivo' => 'CPF do responsável inválido.'];
-                    continue;
-                }
+                $parcela = $v['parcela'];
+                $responsavel = $v['responsavel'];
+                $cpfDigitos = $v['cpf'];
 
                 $nossoNumero = $proximoNossoNumero++;
 
@@ -199,6 +288,9 @@ class RemessaSicoobService
                 'numero_remessa' => $numeroRemessa,
                 'nome_arquivo' => $nomeArquivo,
                 'quantidade_boletos' => count($boletosGerados),
+                'valor_total' => array_sum(array_column($boletosGerados, 'valor')),
+                // Guardado para baixar de novo pela Central Sicoob (base64: CNAB é ISO-8859-1).
+                'conteudo_base64' => base64_encode($conteudo),
                 'gerado_por' => $usuarioId,
             ]);
 

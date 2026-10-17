@@ -32,7 +32,20 @@ class BoletoVisualService
         private ConvenioCobrancaService $convenios,
         private EscolaConfigService $escolaConfig,
         private FinanceiroHelperService $financeiro,
+        private \App\Services\Financeiro\FinanceiroConfigService $config,
     ) {
+    }
+
+    /** Texto de Parametrizações → Financeiro + multa/juros vigentes. */
+    private function instrucoes(): array
+    {
+        $c = $this->config->todas();
+        $linhas = array_values(array_filter(array_map('trim', preg_split('/\r?\n/', $c['instrucoes_boleto']))));
+        if ($c['multa_percentual'] > 0 || $c['juros_diario_percentual'] > 0) {
+            $linhas[] = sprintf('Após o vencimento: multa de %s%% e juros de %s%% ao dia.',
+                number_format($c['multa_percentual'], 2, ',', ''), rtrim(rtrim(number_format($c['juros_diario_percentual'], 4, ',', ''), '0'), ','));
+        }
+        return array_slice($linhas, 0, 5);
     }
 
     /**
@@ -41,10 +54,21 @@ class BoletoVisualService
      */
     public function gerarHtml(int $parcelaId): string
     {
+        return $this->montar($parcelaId)->getOutput();
+    }
+
+    /** Linha digitável (código para pagar pelo app do banco). */
+    public function linhaDigitavel(int $parcelaId): string
+    {
+        return $this->montar($parcelaId)->getLinhaDigitavel();
+    }
+
+    private function montar(int $parcelaId): Sicoob
+    {
         $boleto = DB::table('boletos_bancarios as bb')
             ->join('parcelas as p', 'p.id', '=', 'bb.parcela_id')
             ->where('bb.parcela_id', $parcelaId)
-            ->whereIn('bb.status', ['gerado', 'enviado'])
+            ->whereIn('bb.status', RemessaSicoobService::BOLETO_ATIVO)
             ->orderByDesc('bb.id')
             ->first(['bb.nosso_numero', 'bb.valor', 'bb.data_vencimento', 'bb.data_emissao', 'p.aluno_id']);
 
@@ -105,9 +129,9 @@ class BoletoVisualService
             'convenio' => $convenio['codigo_cedente'] . $cedenteDv,
             'especieDoc' => 'DM',
             'aceite' => false,
-            'instrucoes' => ['Não receber após o vencimento sem autorização da secretaria.'],
+            'instrucoes' => $this->instrucoes(),
         ]);
 
-        return $boletoObj->getOutput();
+        return $boletoObj;
     }
 }

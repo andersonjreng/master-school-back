@@ -23,6 +23,7 @@ class ProfessorController extends Controller
     public function __construct(
         private ProfessorResolver $professores,
         private LogSistemaService $log,
+        private \App\Services\Cadastro\CadastroValidacaoService $validacao,
     ) {
     }
 
@@ -30,21 +31,22 @@ class ProfessorController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem listar todos os professores.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem listar todos os professores.'], 403);
         }
 
         $rows = DB::select("
             SELECT
-                p.id AS professor_id, u.id AS usuario_id, u.nome_completo, u.email, u.ativo,
-                u.data_cadastro, u.ultimo_login, p.data_contratacao,
+                p.id AS professor_id, u.id AS usuario_id, u.nome_completo, u.email, u.telefone, u.ativo,
+                u.data_cadastro, u.ultimo_login, p.data_contratacao, p.registro_funcional, p.cpf, p.data_nascimento,
                 GROUP_CONCAT(DISTINCT CONCAT(t.nome_turma, ' (', d.nome_disciplina, ')') SEPARATOR '; ') AS turmas_vinculadas
             FROM professores p
             JOIN usuarios u ON p.usuario_id = u.id
             LEFT JOIN turma_professor_disciplina tpd ON p.id = tpd.professor_id
             LEFT JOIN turmas t ON tpd.turma_id = t.id
             LEFT JOIN disciplinas d ON tpd.disciplina_id = d.id
-            GROUP BY p.id, u.id, u.nome_completo, u.email, u.ativo, u.data_cadastro, u.ultimo_login, p.data_contratacao
+            GROUP BY p.id, u.id, u.nome_completo, u.email, u.telefone, u.ativo, u.data_cadastro, u.ultimo_login,
+                p.data_contratacao, p.registro_funcional, p.cpf, p.data_nascimento
             ORDER BY u.nome_completo ASC
         ");
 
@@ -53,6 +55,10 @@ class ProfessorController extends Controller
             $arr['ativo_status'] = $row->ativo == 1 ? 'Ativo' : 'Inativo';
             $arr['ativo'] = (bool) $row->ativo;
             $arr['turmas_vinculadas_array'] = $row->turmas_vinculadas ? explode('; ', $row->turmas_vinculadas) : [];
+            $arr['pendencias_cadastro'] = array_values(array_filter([
+                $this->validacao->cpfValido($row->cpf) ? null : 'CPF',
+                $this->validacao->telefoneValido($row->telefone) ? null : 'telefone',
+            ]));
             unset($arr['turmas_vinculadas']);
 
             return $arr;
@@ -65,34 +71,45 @@ class ProfessorController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
-            return response()->json(['error' => 'Acesso negado. Apenas administradores podem cadastrar professores.'], 403);
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem cadastrar professores.'], 403);
         }
 
-        $nomeCompleto = $request->input('nome_completo');
-        $email = $request->input('email');
-        $senhaBruta = $request->input('senha');
-        $registroFuncional = $request->input('registro_funcional');
-        $dataContratacao = $request->input('data_contratacao', now()->format('Y-m-d'));
+        $v = $this->validacao;
+        $nomeCompleto = $v->texto($request->input('nome_completo'));
+        $email = $v->texto($request->input('email'));
+        $senhaBruta = (string) $request->input('senha');
+        $registroFuncional = $v->texto($request->input('registro_funcional'));
+        // 'data_admissao' é o nome antigo que o formulário mandava.
+        $dataContratacao = $v->texto($request->input('data_contratacao', $request->input('data_admissao'))) ?? now()->format('Y-m-d');
 
-        if (!$nomeCompleto || !$email || !$senhaBruta || !$registroFuncional) {
-            return response()->json(['error' => 'Os campos obrigatórios (nome_completo, email, senha, registro_funcional) devem ser fornecidos.'], 400);
+        $erro = (!$nomeCompleto ? 'Informe o nome completo.' : null)
+            ?? $v->validarCpf('professores', $request->input('cpf'), true)
+            ?? $v->validarEmail($email)
+            ?? $v->validarSenha($senhaBruta)
+            ?? $v->validarTelefone($request->input('telefone'), true)
+            ?? (!$registroFuncional ? 'Informe o registro funcional.' : null);
+        if ($erro) {
+            return response()->json(['error' => $erro], 422);
         }
 
         try {
-            $usuarioId = DB::transaction(function () use ($nomeCompleto, $email, $senhaBruta, $registroFuncional, $dataContratacao) {
+            $usuarioId = DB::transaction(function () use ($request, $v, $nomeCompleto, $email, $senhaBruta, $registroFuncional, $dataContratacao) {
                 $usuarioId = DB::table('usuarios')->insertGetId([
                     'nome_completo' => $nomeCompleto,
                     'email'         => $email,
                     'senha'         => Hash::make($senhaBruta),
+                    'telefone'      => $v->telefone($request->input('telefone')),
                     'data_cadastro' => now(),
                     'ativo'         => 1,
                 ]);
 
                 DB::table('professores')->insert([
-                    'usuario_id'          => $usuarioId,
-                    'registro_funcional'  => $registroFuncional,
-                    'data_contratacao'    => $dataContratacao,
+                    'usuario_id'         => $usuarioId,
+                    'cpf'                => $v->formatarCpf($request->input('cpf')),
+                    'data_nascimento'    => $v->texto($request->input('data_nascimento')),
+                    'registro_funcional' => $registroFuncional,
+                    'data_contratacao'   => $dataContratacao,
                 ]);
 
                 // ID 3 = Professor (ver tabela funcoes).
@@ -101,7 +118,7 @@ class ProfessorController extends Controller
                 return $usuarioId;
             });
         } catch (\Throwable $e) {
-            return response()->json(['error' => 'Falha no cadastro transacional.', 'message' => $e->getMessage()], 500);
+            return response()->json(['error' => $v->mensagemDuplicidade($e) ?? 'Falha ao cadastrar o professor.', 'message' => $e->getMessage()], 422);
         }
 
         return response()->json([
@@ -115,47 +132,64 @@ class ProfessorController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
-        $usuarioId = $request->input('usuario_id');
-        if (!$usuarioId) {
-            return response()->json(['error' => 'O campo usuario_id é obrigatório para edição.'], 400);
+        $usuarioId = (int) $request->input('usuario_id');
+        $atual = $usuarioId ? DB::table('professores')->where('usuario_id', $usuarioId)->first(['id', 'cpf']) : null;
+        if (!$atual) {
+            return response()->json(['error' => 'Professor não encontrado.'], 404);
+        }
+        $v = $this->validacao;
+
+        $erro = ($request->has('nome_completo') && !$v->texto($request->input('nome_completo')) ? 'Informe o nome completo.' : null)
+            ?? ($request->has('email') ? $v->validarEmail($request->input('email'), $usuarioId) : null)
+            ?? ($request->filled('senha') ? $v->validarSenha($request->input('senha')) : null)
+            ?? ($request->has('cpf') && $v->formatarCpf($request->input('cpf')) !== $atual->cpf ? $v->validarCpf('professores', $request->input('cpf'), true, (int) $atual->id) : null)
+            ?? ($request->has('telefone') ? $v->validarTelefone($request->input('telefone'), true) : null)
+            ?? ($request->has('registro_funcional') && !$v->texto($request->input('registro_funcional')) ? 'Informe o registro funcional.' : null);
+        if ($erro) {
+            return response()->json(['error' => $erro], 422);
         }
 
         try {
-            DB::transaction(function () use ($request, $usuarioId) {
+            DB::transaction(function () use ($request, $v, $usuarioId) {
                 $camposUsuario = [];
                 if ($request->has('nome_completo')) {
-                    $camposUsuario['nome_completo'] = $request->input('nome_completo');
+                    $camposUsuario['nome_completo'] = $v->texto($request->input('nome_completo'));
                 }
                 if ($request->has('email')) {
-                    $camposUsuario['email'] = $request->input('email');
+                    $camposUsuario['email'] = $v->texto($request->input('email'));
                 }
                 if ($request->filled('senha')) {
                     $camposUsuario['senha'] = Hash::make($request->input('senha'));
                 }
                 if ($request->has('ativo')) {
-                    $camposUsuario['ativo'] = $request->input('ativo');
+                    $camposUsuario['ativo'] = $request->boolean('ativo') ? 1 : 0;
+                }
+                if ($request->has('telefone')) {
+                    $camposUsuario['telefone'] = $v->telefone($request->input('telefone'));
                 }
                 if ($camposUsuario) {
                     DB::table('usuarios')->where('id', $usuarioId)->update($camposUsuario);
                 }
 
                 $camposProf = [];
-                if ($request->has('registro_funcional')) {
-                    $camposProf['registro_funcional'] = $request->input('registro_funcional');
+                foreach (['registro_funcional', 'data_contratacao', 'data_nascimento'] as $campo) {
+                    if ($request->has($campo)) {
+                        $camposProf[$campo] = $v->texto($request->input($campo));
+                    }
                 }
-                if ($request->has('data_contratacao')) {
-                    $camposProf['data_contratacao'] = $request->input('data_contratacao');
+                if ($request->has('cpf')) {
+                    $camposProf['cpf'] = $v->formatarCpf($request->input('cpf'));
                 }
                 if ($camposProf) {
                     DB::table('professores')->where('usuario_id', $usuarioId)->update($camposProf);
                 }
             });
         } catch (\Throwable $e) {
-            return response()->json(['error' => 'Erro ao atualizar.', 'message' => $e->getMessage()], 500);
+            return response()->json(['error' => $v->mensagemDuplicidade($e) ?? 'Erro ao atualizar.', 'message' => $e->getMessage()], 422);
         }
 
         return response()->json(['success' => 'Professor atualizado com sucesso.']);
@@ -203,12 +237,29 @@ class ProfessorController extends Controller
         return response()->json(array_values($turmas));
     }
 
+    /** Painel "Meu dia" da home do professor (ver PainelProfessorService). */
+    public function painel(Request $request): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
+        if (!in_array('Professor', $funcoes, true)) {
+            return response()->json(['error' => 'Painel exclusivo para professores.'], 403);
+        }
+
+        $professorId = $this->professores->idDoUsuario((int) ($jwtUser->id ?? 0));
+        if (!$professorId) {
+            return response()->json(['error' => 'Professor não encontrado na tabela de professores.'], 404);
+        }
+
+        return response()->json(['success' => true, 'data' => app(\App\Services\Professores\PainelProfessorService::class)->gerar($professorId)]);
+    }
+
     public function minhasDisciplinas(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
         $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdminOuDiretor = in_array('Administrador', $funcoes, true) || in_array('Diretor', $funcoes, true);
+        $isAdminOuDiretor = \App\Support\Papeis::ehGestor($funcoes);
 
         if (!$isProfessor && !$isAdminOuDiretor) {
             return response()->json(['error' => 'Acesso negado.'], 403);
@@ -262,11 +313,15 @@ class ProfessorController extends Controller
             return response()->json(['error' => 'ID da turma é obrigatório. Ex: ?turma_id=1'], 400);
         }
 
-        $incluirHistorico = $request->query('incluir_historico') === '1';
+        // Turma encerrada sempre lista pelo histórico (alunos já promovidos).
+        $incluirHistorico = $request->query('incluir_historico') === '1'
+            || !app(\App\Services\Turmas\TurmaSituacaoService::class)->editavel((int) $turmaId);
         $tabelaRoster = $incluirHistorico
             ? '(SELECT DISTINCT aluno_id, turma_id FROM matriculas) ta'
             : 'turma_aluno ta';
-        $filtroAtivo = $incluirHistorico ? '' : 'AND u_aluno.ativo = 1';
+        // incluir_inativos=1 (virada de ano): mostra também alunos com usuário
+        // desativado que ainda estão vinculados, para o admin dar um destino.
+        $filtroAtivo = ($incluirHistorico || $request->query('incluir_inativos') === '1') ? '' : 'AND u_aluno.ativo = 1';
 
         $rows = DB::select("
             SELECT
@@ -320,15 +375,20 @@ class ProfessorController extends Controller
             return response()->json(['error' => 'Parâmetros turma_id e data são obrigatórios.'], 400);
         }
 
-        $rows = DB::select('
+        // Turma encerrada: alunos pelo histórico de matrículas (inclui quem já
+        // foi promovido/concluiu), sem filtrar inativos.
+        $situacao = app(\App\Services\Turmas\TurmaSituacaoService::class);
+        $tabela = $situacao->tabelaRoster((int) $turmaId);
+        $filtroAtivo = $situacao->incluiInativos((int) $turmaId) ? '' : 'AND u.ativo = 1';
+        $rows = DB::select("
             SELECT a.id AS aluno_id, a.matricula, u.nome_completo AS nome_aluno, f.presente, f.justificativa, f.data AS data_registro
-            FROM turma_aluno ta
+            FROM {$tabela} ta
             JOIN alunos a ON ta.aluno_id = a.id
             JOIN usuarios u ON a.usuario_id = u.id
             LEFT JOIN frequencia f ON a.id = f.aluno_id AND f.data = ?
-            WHERE ta.turma_id = ? AND u.ativo = 1
+            WHERE ta.turma_id = ? {$filtroAtivo}
             ORDER BY u.nome_completo ASC
-        ', [$dataConsulta, $turmaId]);
+        ", [$dataConsulta, $turmaId]);
 
         $totalAlunos = 0;
         $totalPresentes = 0;
@@ -463,6 +523,20 @@ class ProfessorController extends Controller
             return response()->json(['error' => 'Dados incompletos. Informe a data e a lista de alunos.'], 400);
         }
 
+        // Turma congelada (encerrada/inativa) não aceita chamada. Front antigo
+        // não manda turma_id: deduz pela turma atual do primeiro aluno.
+        $turmaId = (int) $request->input('turma_id')
+            ?: (int) DB::table('turma_aluno')->where('aluno_id', (int) ($alunosFrequencia[0]['aluno_id'] ?? 0))->value('turma_id');
+        if ($turmaId && ($bloqueio = app(\App\Services\Turmas\TurmaSituacaoService::class)->bloqueio($turmaId))) {
+            return $bloqueio;
+        }
+
+        // Dia sem aula no calendário escolar: só com confirmação explícita.
+        $naoLetivo = $turmaId ? app(\App\Services\Turmas\CalendarioEscolarService::class)->avisoDiaNaoLetivo($turmaId, (string) $dataFrequencia) : null;
+        if ($naoLetivo && !$request->boolean('confirmar_dia_nao_letivo')) {
+            return response()->json($naoLetivo, 409);
+        }
+
         DB::transaction(function () use ($alunosFrequencia, $dataFrequencia) {
             foreach ($alunosFrequencia as $item) {
                 DB::statement('
@@ -481,15 +555,80 @@ class ProfessorController extends Controller
         $totalAlunos = count($alunosFrequencia);
 
         $this->log->registrar(
-            $request, $usuarioId, $username, 'LANCAMENTO_FREQUENCIA', '/api/professores/frequencia', 'POST',
-            "Frequência lançada para $totalAlunos aluno(s) na data $dataFrequencia",
+            $request, $usuarioId, $username, $naoLetivo ? 'LANCAMENTO_FREQUENCIA_DIA_NAO_LETIVO' : 'LANCAMENTO_FREQUENCIA', '/api/professores/frequencia', 'POST',
+            "Frequência lançada para $totalAlunos aluno(s) na data $dataFrequencia" . ($naoLetivo ? " (dia sem aula no calendário: {$naoLetivo['tipo']}, confirmado)" : ''),
             200,
-            ['data' => $dataFrequencia, 'total_alunos' => $totalAlunos]
+            ['data' => $dataFrequencia, 'total_alunos' => $totalAlunos, 'dia_nao_letivo' => $naoLetivo['tipo'] ?? null]
         );
 
         return response()->json([
             'success' => true,
             'message' => "Frequência salva/atualizada com sucesso para $totalAlunos alunos.",
+        ]);
+    }
+
+    /**
+     * Remove a chamada inteira de uma turma num dia (ex.: lançada na data
+     * errada). `frequencia` não tem turma_id, então apaga os registros dos
+     * alunos da turma naquela data. Professor só pode excluir de turma em
+     * que leciona.
+     */
+    public function excluirFrequencia(Request $request): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        $usuarioId = (int) ($jwtUser->id ?? 0);
+        $username = $jwtUser->nome ?? 'desconhecido';
+        $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
+        $isAdmin = !empty(array_intersect(['Administrador', 'Diretoria', 'Diretor'], $funcoes));
+        $isProfessor = in_array('Professor', $funcoes, true);
+
+        if (!$isAdmin && !$isProfessor) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
+
+        $turmaId = $request->query('turma_id');
+        $data = $request->query('data');
+
+        if (!$turmaId || !is_numeric($turmaId) || !$data || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
+            return response()->json(['error' => 'Parâmetros turma_id e data (AAAA-MM-DD) são obrigatórios.'], 400);
+        }
+        $turmaId = (int) $turmaId;
+
+        if ($bloqueio = app(\App\Services\Turmas\TurmaSituacaoService::class)->bloqueio($turmaId)) {
+            return $bloqueio;
+        }
+
+        if (!$isAdmin) {
+            $professorId = $this->professores->idDoUsuario($usuarioId);
+            $leciona = $professorId && DB::table('turma_professor_disciplina')
+                ->where('turma_id', $turmaId)
+                ->where('professor_id', $professorId)
+                ->exists();
+
+            if (!$leciona) {
+                return response()->json(['error' => 'Acesso negado. Você não leciona nesta turma.'], 403);
+            }
+        }
+
+        $removidos = DB::table('frequencia')
+            ->where('data', $data)
+            ->whereIn('aluno_id', DB::table('turma_aluno')->where('turma_id', $turmaId)->select('aluno_id'))
+            ->delete();
+
+        if ($removidos === 0) {
+            return response()->json(['error' => 'Nenhuma frequência lançada para esta turma nesta data.'], 404);
+        }
+
+        $this->log->registrar(
+            $request, $usuarioId, $username, 'EXCLUSAO_FREQUENCIA', '/api/professores/frequencia', 'DELETE',
+            "Frequência da turma #$turmaId na data $data excluída ($removidos registro(s))",
+            200,
+            ['turma_id' => $turmaId, 'data' => $data, 'total_registros' => $removidos]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => "Frequência excluída com sucesso ($removidos registro(s)).",
         ]);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Frequencia\FrequenciaAccessService;
+use App\Services\Frequencia\RelatorioFrequenciaService;
 use App\Services\Frequencia\ResumoGeralService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +19,7 @@ class FrequenciaController extends Controller
     public function __construct(
         private FrequenciaAccessService $access,
         private ResumoGeralService $resumoGeral,
+        private RelatorioFrequenciaService $relatorio,
     ) {
     }
 
@@ -345,5 +347,37 @@ class FrequenciaController extends Controller
             'totalFaltas'         => (int) $row->total_faltas,
             'totalAulasNoPeriodo' => (int) $row->total_dias_aula,
         ]);
+    }
+
+    /**
+     * Relatório analítico de uma turma (tela /frequencia/relatorio) — ver
+     * RelatorioFrequenciaService. Sem `mes` = relatório anual.
+     */
+    public function relatorio(Request $request): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        if (!$this->access->possuiPapel($jwtUser, ['Administrador', 'Diretoria', 'Professor', 'Responsável', 'Responsavel'])) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
+
+        $ano = (int) $request->query('ano');
+        $turmaId = (int) $request->query('turma_id');
+        $mes = $request->query('mes') ? (int) $request->query('mes') : null;
+        $alunoId = $request->query('aluno_id') ? (int) $request->query('aluno_id') : null;
+
+        if (!$ano || !$turmaId || ($mes !== null && ($mes < 1 || $mes > 12))) {
+            return response()->json(['error' => 'Parâmetros ano e turma_id são obrigatórios (mes entre 1 e 12).'], 400);
+        }
+
+        if ($this->access->responsavelSemAcessoAmplo($jwtUser, ['Administrador', 'Diretoria', 'Professor'])) {
+            if (!$alunoId) {
+                return response()->json(['error' => 'aluno_id é obrigatório para o perfil Responsável.'], 400);
+            }
+            if (!$this->access->dependenteValido($jwtUser, $alunoId)) {
+                return response()->json(['error' => 'Acesso negado. Este aluno não é seu dependente.'], 403);
+            }
+        }
+
+        return response()->json($this->relatorio->gerar($turmaId, $ano, $mes, $alunoId));
     }
 }

@@ -45,6 +45,14 @@ class ConvenioCobrancaService
      * NÃO mexe em proximo_nosso_numero — esse contador é avançado só pelo
      * gerador de remessa, nunca por essa tela.
      */
+    /** Normaliza um dígito verificador vindo da tela: "0" é válido (`?: null` o apagaria). */
+    public static function dv(mixed $valor): ?string
+    {
+        $valor = trim((string) $valor);
+
+        return $valor === '' ? null : $valor;
+    }
+
     public function salvar(array $dados): array
     {
         $existente = $this->carregar($dados['banco_codigo']);
@@ -56,6 +64,7 @@ class ConvenioCobrancaService
             'agencia' => $dados['agencia'],
             'agencia_dv' => $dados['agencia_dv'],
             'conta' => $dados['conta'],
+            'conta_dv' => $dados['conta_dv'] ?? null,
             'carteira' => $dados['carteira'],
             'variacao_carteira' => $dados['variacao_carteira'],
             'ativo' => (int) $dados['ativo'],

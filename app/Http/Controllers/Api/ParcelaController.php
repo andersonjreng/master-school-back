@@ -37,7 +37,12 @@ class ParcelaController extends Controller
                 'p.data_pagamento', 'p.forma_pagamento', 'p.valor_pago', 'p.observacoes', 'p.matricula_financeira_id',
                 'mf.ano_letivo',
                 DB::raw('(SELECT r.numero_recibo FROM recibos r WHERE r.parcela_id = p.id LIMIT 1) AS numero_recibo'),
+                // Último boleto emitido para a parcela (modo Sicoob).
+                'bb.status as boleto_status', 'bb.nosso_numero as boleto_nosso_numero',
+                'bb.ultima_ocorrencia_descricao as boleto_ocorrencia', 'bb.ultima_ocorrencia_em as boleto_ocorrencia_em',
+                DB::raw('(SELECT MAX(t.nome_turma) FROM turma_aluno ta JOIN turmas t ON t.id = ta.turma_id WHERE ta.aluno_id = p.aluno_id AND t.ano_letivo = mf.ano_letivo) AS turma'),
             ])
+            ->leftJoin('boletos_bancarios as bb', 'bb.id', '=', DB::raw('(SELECT MAX(b2.id) FROM boletos_bancarios b2 WHERE b2.parcela_id = p.id)'))
             ->orderBy('p.data_vencimento')
             ->orderBy('u.nome_completo');
 
@@ -326,13 +331,7 @@ class ParcelaController extends Controller
             return response()->json(['error' => 'aluno_id é obrigatório.'], 400);
         }
 
-        $autorizado = DB::table('responsaveis as r')
-            ->join('aluno_responsavel as ar', 'r.id', '=', 'ar.responsavel_id')
-            ->where('r.usuario_id', $usuarioIdLogado)
-            ->where('ar.aluno_id', $alunoId)
-            ->exists();
-
-        if (!$autorizado) {
+        if (!$this->ehDependente($usuarioIdLogado, $alunoId)) {
             return response()->json(['error' => 'Acesso negado. Este aluno não é seu dependente.'], 403);
         }
 
@@ -355,21 +354,27 @@ class ParcelaController extends Controller
                 'p.valor_original', 'p.desconto_aplicado', 'p.valor_final', 'p.data_vencimento', 'p.status',
                 'p.data_pagamento', 'p.forma_pagamento', 'p.valor_pago', 'mf.ano_letivo',
                 DB::raw('(SELECT r.numero_recibo FROM recibos r WHERE r.parcela_id = p.id LIMIT 1) AS numero_recibo'),
+                'bb.status as boleto_status',
             ])
+            ->leftJoin('boletos_bancarios as bb', 'bb.id', '=', DB::raw('(SELECT MAX(b2.id) FROM boletos_bancarios b2 WHERE b2.parcela_id = p.id)'))
             ->get();
 
+        $modo = app(\App\Services\Financeiro\FinanceiroConfigService::class)->todas()['modo_cobranca'];
         $config = $this->helper->carregarConfiguracoes();
         $encargosZero = [
             'dias_atraso' => 0, 'dias_efetivos' => 0, 'multa_valor' => 0.0, 'juros_valor' => 0.0,
             'total_encargos' => 0.0, 'valor_com_encargos' => 0.0,
         ];
 
-        $parcelas = $rows->map(function ($row) use ($config, $encargosZero) {
+        $parcelas = $rows->map(function ($row) use ($config, $encargosZero, $modo) {
             $arr = (array) $row;
             $arr['valor_original'] = (float) $row->valor_original;
             $arr['desconto_aplicado'] = (float) $row->desconto_aplicado;
             $arr['valor_final'] = (float) $row->valor_final;
             $arr['valor_pago'] = $row->valor_pago !== null ? (float) $row->valor_pago : null;
+            // Boleto que ainda pode ser pago (2ª via / linha digitável).
+            $arr['boleto_disponivel'] = $modo === 'sicoob_arquivo' && in_array($row->status, ['pendente', 'vencido'], true)
+                && in_array($row->boleto_status, \App\Services\Financeiro\Sicoob\RemessaSicoobService::BOLETO_ATIVO, true);
 
             if ($row->status === 'vencido') {
                 $arr = array_merge($arr, $this->helper->calcularEncargos($config, $row->data_vencimento, (float) $row->valor_final));
@@ -381,6 +386,41 @@ class ParcelaController extends Controller
             return $arr;
         })->values();
 
-        return response()->json(['success' => true, 'count' => $parcelas->count(), 'data' => $parcelas]);
+        return response()->json([
+            'success' => true,
+            'count' => $parcelas->count(),
+            'modo_cobranca' => $modo,
+            'encargos' => ['multa_pct' => $config['multa_pct'], 'juros_dia' => $config['juros_dia'], 'carencia' => $config['carencia']],
+            'data' => $parcelas,
+        ]);
+    }
+
+    /** 2ª via do boleto para o responsável (só de dependente dele). */
+    public function meuBoleto(Request $request, int $id): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        $alunoId = (int) DB::table('parcelas')->where('id', $id)->value('aluno_id');
+        if (!$alunoId || !$this->ehDependente((int) ($jwtUser->id ?? 0), $alunoId)) {
+            return response()->json(['error' => 'Parcela não encontrada.'], 404);
+        }
+        $visual = app(\App\Services\Financeiro\Sicoob\BoletoVisualService::class);
+        try {
+            return response()->json([
+                'success' => true,
+                'html' => $visual->gerarHtml($id),
+                'linha_digitavel' => $visual->linhaDigitavel($id),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'Boleto indisponível no momento. Fale com a secretaria da escola.'], 422);
+        }
+    }
+
+    private function ehDependente(int $usuarioId, int $alunoId): bool
+    {
+        return DB::table('responsaveis as r')
+            ->join('aluno_responsavel as ar', 'r.id', '=', 'ar.responsavel_id')
+            ->where('r.usuario_id', $usuarioId)
+            ->where('ar.aluno_id', $alunoId)
+            ->exists();
     }
 }

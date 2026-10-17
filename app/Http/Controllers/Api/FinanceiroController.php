@@ -18,7 +18,11 @@ class FinanceiroController extends Controller
 
     public function configuracoes(): JsonResponse
     {
-        return response()->json(['success' => true, 'data' => $this->helper->carregarConfiguracoes()]);
+        $c = app(\App\Services\Financeiro\FinanceiroConfigService::class)->todas();
+        return response()->json(['success' => true, 'data' => $this->helper->carregarConfiguracoes() + [
+            'modo_cobranca' => $c['modo_cobranca'],
+            'financeiro_na_matricula' => $c['financeiro_na_matricula'],
+        ]]);
     }
 
     public function dashboard(): JsonResponse
