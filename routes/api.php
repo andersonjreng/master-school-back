@@ -372,6 +372,7 @@ Route::prefix('parametrizacoes')->middleware(['max.jwt', 'max.role:Administrador
 
     Route::get('/financeiro', [FinanceiroParametrosController::class, 'show']);
     Route::put('/financeiro', [FinanceiroParametrosController::class, 'update']);
+    Route::post('/financeiro/asaas/testar', [FinanceiroParametrosController::class, 'testarAsaas']);
 
     Route::get('/anos-letivos', [AnoLetivoController::class, 'index']);
     Route::post('/anos-letivos', [AnoLetivoController::class, 'store']);

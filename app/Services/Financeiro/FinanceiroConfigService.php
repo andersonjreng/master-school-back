@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
  */
 class FinanceiroConfigService
 {
-    public const MODOS = ['manual', 'sicoob_arquivo'];
+    public const MODOS = ['manual', 'sicoob_arquivo', 'asaas'];
     public const MATRICULA = ['perguntar', 'nao_perguntar'];
 
     private const PADROES = [
@@ -43,6 +43,11 @@ class FinanceiroConfigService
     public function modoSicoob(): bool
     {
         return $this->todas()['modo_cobranca'] === 'sicoob_arquivo';
+    }
+
+    public function modoAsaas(): bool
+    {
+        return $this->todas()['modo_cobranca'] === 'asaas';
     }
 
     public function salvar(array $valores): void
