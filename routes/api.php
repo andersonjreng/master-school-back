@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AlunoController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AvaliacaoController;
 use App\Http\Controllers\Api\BnccController;
+use App\Http\Controllers\Api\AsaasController;
 use App\Http\Controllers\Api\BoletoSicoobController;
 use App\Http\Controllers\Api\ContratoFinanceiroController;
 use App\Http\Controllers\Api\ConvenioCobrancaController;
@@ -206,6 +207,10 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
         Route::post('/sicoob/retorno/analisar', [BoletoSicoobController::class, 'analisarRetorno']);
         Route::get('/sicoob/retornos', [BoletoSicoobController::class, 'retornos']);
         Route::get('/sicoob/retornos/{id}', [BoletoSicoobController::class, 'retornoItens'])->whereNumber('id');
+
+        // Central Asaas (gateway: boleto com Pix + baixa automática).
+        Route::get('/asaas/clientes', [AsaasController::class, 'clientes']);
+        Route::post('/asaas/clientes/sincronizar', [AsaasController::class, 'sincronizarClientes']);
     });
 
     // Convênio bancário (cadastro dos dados do cedente).
