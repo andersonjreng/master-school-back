@@ -211,6 +211,11 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
         // Central Asaas (gateway: boleto com Pix + baixa automática).
         Route::get('/asaas/clientes', [AsaasController::class, 'clientes']);
         Route::post('/asaas/clientes/sincronizar', [AsaasController::class, 'sincronizarClientes']);
+        Route::get('/asaas/cobrancas/resumo', [AsaasController::class, 'resumoCobrancas']);
+        Route::get('/asaas/cobrancas/candidatas', [AsaasController::class, 'candidatas']);
+        Route::post('/asaas/cobrancas/emitir', [AsaasController::class, 'emitir']);
+        Route::get('/asaas/cobrancas', [AsaasController::class, 'cobrancas']);
+        Route::post('/asaas/cobrancas/{id}/cancelar', [AsaasController::class, 'cancelarCobranca'])->whereNumber('id');
     });
 
     // Convênio bancário (cadastro dos dados do cedente).
