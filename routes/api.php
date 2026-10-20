@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AlunoController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AvaliacaoController;
 use App\Http\Controllers\Api\BnccController;
+use App\Http\Controllers\Api\AsaasController;
 use App\Http\Controllers\Api\BoletoSicoobController;
 use App\Http\Controllers\Api\ContratoFinanceiroController;
 use App\Http\Controllers\Api\ConvenioCobrancaController;
@@ -150,6 +151,13 @@ Route::prefix('responsaveis')->middleware('max.jwt')->group(function () {
     Route::post('/vincular-alunos', [ResponsavelController::class, 'vincularAlunos']);
 });
 
+// Avisos do Asaas (webhook). Público: autentica pelo token no header
+// asaas-access-token; a escola vem do subdomínio (ResolveTenantDatabase).
+// Sem limite de requisições de propósito: num dia de muitos pagamentos o
+// Asaas manda rajadas de avisos, e respostas 429 contam como falha — 15
+// seguidas pausam a fila de webhooks da escola. O token já barra terceiros.
+Route::post('/webhooks/asaas', [\App\Http\Controllers\Api\AsaasWebhookController::class, 'receber']);
+
 // Equivalente a api/financeiro/*.php, incluindo api/financeiro/convenio/*.php
 // (boleto bancário Sicoob — remessa/retorno CNAB, boleto visual).
 Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
@@ -160,6 +168,7 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
     Route::middleware('max.role:Responsável')->group(function () {
         Route::get('/minhas-parcelas', [ParcelaController::class, 'minhasParcelas']);
         Route::get('/minhas-parcelas/{id}/boleto', [ParcelaController::class, 'meuBoleto'])->whereNumber('id');
+        Route::get('/minhas-parcelas/{id}/pix', [ParcelaController::class, 'meuPix'])->whereNumber('id');
     });
 
     Route::middleware('max.role:Administrador,Diretoria')->group(function () {
@@ -206,6 +215,17 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
         Route::post('/sicoob/retorno/analisar', [BoletoSicoobController::class, 'analisarRetorno']);
         Route::get('/sicoob/retornos', [BoletoSicoobController::class, 'retornos']);
         Route::get('/sicoob/retornos/{id}', [BoletoSicoobController::class, 'retornoItens'])->whereNumber('id');
+
+        // Central Asaas (gateway: boleto com Pix + baixa automática).
+        Route::get('/asaas/clientes', [AsaasController::class, 'clientes']);
+        Route::post('/asaas/clientes/sincronizar', [AsaasController::class, 'sincronizarClientes']);
+        Route::get('/asaas/cobrancas/resumo', [AsaasController::class, 'resumoCobrancas']);
+        Route::get('/asaas/cobrancas/candidatas', [AsaasController::class, 'candidatas']);
+        Route::post('/asaas/cobrancas/emitir', [AsaasController::class, 'emitir']);
+        Route::get('/asaas/cobrancas', [AsaasController::class, 'cobrancas']);
+        Route::post('/asaas/cobrancas/{id}/cancelar', [AsaasController::class, 'cancelarCobranca'])->whereNumber('id');
+        Route::post('/asaas/sincronizar', [AsaasController::class, 'sincronizar']);
+        Route::get('/asaas/eventos', [AsaasController::class, 'eventos']);
     });
 
     // Convênio bancário (cadastro dos dados do cedente).
@@ -372,6 +392,7 @@ Route::prefix('parametrizacoes')->middleware(['max.jwt', 'max.role:Administrador
 
     Route::get('/financeiro', [FinanceiroParametrosController::class, 'show']);
     Route::put('/financeiro', [FinanceiroParametrosController::class, 'update']);
+    Route::post('/financeiro/asaas/testar', [FinanceiroParametrosController::class, 'testarAsaas']);
 
     Route::get('/anos-letivos', [AnoLetivoController::class, 'index']);
     Route::post('/anos-letivos', [AnoLetivoController::class, 'store']);

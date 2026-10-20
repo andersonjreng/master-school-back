@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
  */
 class FinanceiroConfigService
 {
-    public const MODOS = ['manual', 'sicoob_arquivo'];
+    public const MODOS = ['manual', 'sicoob_arquivo', 'asaas'];
     public const MATRICULA = ['perguntar', 'nao_perguntar'];
 
     private const PADROES = [
@@ -22,6 +22,7 @@ class FinanceiroConfigService
         'multa_percentual'          => '2.00',
         'juros_diario_percentual'   => '0.0333',
         'dias_carencia'             => '5',
+        'asaas_emissao_automatica'  => '0',
     ];
 
     public function todas(): array
@@ -37,6 +38,7 @@ class FinanceiroConfigService
             'multa_percentual'          => (float) $c['multa_percentual'],
             'juros_diario_percentual'   => (float) $c['juros_diario_percentual'],
             'dias_carencia'             => (int) $c['dias_carencia'],
+            'asaas_emissao_automatica'  => $c['asaas_emissao_automatica'] === '1',
         ];
     }
 
@@ -45,13 +47,18 @@ class FinanceiroConfigService
         return $this->todas()['modo_cobranca'] === 'sicoob_arquivo';
     }
 
+    public function modoAsaas(): bool
+    {
+        return $this->todas()['modo_cobranca'] === 'asaas';
+    }
+
     public function salvar(array $valores): void
     {
         foreach ($valores as $chave => $valor) {
             if (!array_key_exists($chave, self::PADROES)) {
                 continue;
             }
-            DB::table('configuracoes_financeiras')->updateOrInsert(['chave' => $chave], ['valor' => (string) $valor]);
+            DB::table('configuracoes_financeiras')->updateOrInsert(['chave' => $chave], ['valor' => is_bool($valor) ? ($valor ? '1' : '0') : (string) $valor]);
         }
     }
 }

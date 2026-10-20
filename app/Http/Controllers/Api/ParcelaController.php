@@ -73,8 +73,29 @@ class ParcelaController extends Controller
             'config_multa_pct' => $config['multa_pct'], 'config_juros_dia' => $config['juros_dia'], 'config_carencia' => $config['carencia'],
         ];
 
-        $parcelas = $query->get()->map(function ($row) use ($config, $encargosZero) {
+        $rows = $query->get();
+
+        // Cobrança Asaas ativa de cada parcela (para a tela avisar antes de baixa/edição).
+        $asaas = collect();
+        if (DB::getSchemaBuilder()->hasTable('asaas_cobrancas') && $rows->isNotEmpty()) {
+            $asaas = DB::table('asaas_cobrancas')
+                ->whereIn('parcela_id', $rows->pluck('id'))
+                ->where('ativa', 1)
+                ->where('ambiente', app(\App\Services\Financeiro\Asaas\AsaasConfigService::class)->ambiente())
+                ->get(['parcela_id', 'status', 'valor', 'vencimento', 'invoice_url'])
+                ->keyBy('parcela_id');
+        }
+
+        $parcelas = $rows->map(function ($row) use ($config, $encargosZero, $asaas) {
             $arr = (array) $row;
+            $c = $asaas[$row->id] ?? null;
+            $arr['asaas'] = $c ? [
+                'status' => $c->status,
+                'status_label' => \App\Services\Financeiro\Asaas\AsaasCobrancaService::STATUS[$c->status] ?? $c->status,
+                'valor' => (float) $c->valor,
+                'vencimento' => $c->vencimento,
+                'invoice_url' => $c->invoice_url,
+            ] : null;
             $arr['valor_original'] = (float) $row->valor_original;
             $arr['desconto_aplicado'] = (float) $row->desconto_aplicado;
             $arr['valor_final'] = (float) $row->valor_final;
@@ -124,8 +145,21 @@ class ParcelaController extends Controller
             return response()->json(['error' => 'Parcela cancelada ou negociada não pode receber baixa.'], 409);
         }
 
+        // Parcela com boleto Asaas em aberto: a baixa avisa o Asaas ("recebido em
+        // dinheiro") na mesma transação — se o Asaas recusar, a baixa é desfeita,
+        // senão a família ainda conseguiria pagar o boleto/Pix.
+        $asaas = app(\App\Services\Financeiro\Asaas\AsaasCicloVidaService::class);
         try {
-            $resultado = $this->helper->aplicarBaixaParcela($parcelaId, (float) $valorPago, $dataPagamento, $forma, $observacoes, $usuarioIdLogado);
+            $asaas->exigirSemPagamentoPendente($parcelaId);
+            $resultado = DB::transaction(function () use ($asaas, $parcelaId, $valorPago, $dataPagamento, $forma, $observacoes, $usuarioIdLogado) {
+                $r = $this->helper->aplicarBaixaParcela($parcelaId, (float) $valorPago, $dataPagamento, $forma, $observacoes, $usuarioIdLogado);
+                $asaas->aposBaixaManual($parcelaId, (int) $r['baixa_id'], (float) $valorPago, $dataPagamento);
+                return $r;
+            });
+        } catch (\DomainException $e) {
+            return response()->json(['error' => $e->getMessage()], 409);
+        } catch (\App\Services\Financeiro\Asaas\AsaasException $e) {
+            return response()->json(['error' => 'A baixa não foi registrada: não foi possível marcar o boleto como pago no Asaas. ' . $e->getMessage()], 422);
         } catch (\Throwable $e) {
             return response()->json(['error' => 'Erro ao registrar baixa.', 'message' => $e->getMessage()], 500);
         }
@@ -173,6 +207,16 @@ class ParcelaController extends Controller
             return response()->json(['error' => 'Desconto maior que o valor da parcela.'], 400);
         }
 
+        // Boleto Asaas em aberto acompanha o novo valor/vencimento (antes de gravar:
+        // se o Asaas recusar, a parcela não muda).
+        try {
+            app(\App\Services\Financeiro\Asaas\AsaasCicloVidaService::class)->aoEditar($id, $valorFinal, (string) $dataVencimento);
+        } catch (\DomainException $e) {
+            return response()->json(['error' => $e->getMessage()], 409);
+        } catch (\App\Services\Financeiro\Asaas\AsaasException $e) {
+            return response()->json(['error' => 'A parcela não foi alterada: o Asaas recusou a mudança no boleto. ' . $e->getMessage()], 422);
+        }
+
         DB::table('parcelas')->where('id', $id)->update([
             'valor_original' => $valorOriginal,
             'desconto_aplicado' => $desconto,
@@ -214,6 +258,15 @@ class ParcelaController extends Controller
         }
 
         $valorNova = $novoValorInput !== null ? (float) $novoValorInput : (float) $parcela->valor_final;
+
+        // O boleto Asaas da parcela antiga deixa de valer; a nova é emitida depois, na Central Asaas.
+        try {
+            app(\App\Services\Financeiro\Asaas\AsaasCicloVidaService::class)->cancelarDasParcelas([$parcelaId]);
+        } catch (\DomainException $e) {
+            return response()->json(['error' => $e->getMessage()], 409);
+        } catch (\App\Services\Financeiro\Asaas\AsaasException $e) {
+            return response()->json(['error' => 'A renegociação não foi feita: não foi possível cancelar o boleto no Asaas. ' . $e->getMessage()], 422);
+        }
 
         try {
             $novaId = DB::transaction(function () use ($parcela, $parcelaId, $observacoes, $novoVencimento, $valorNova) {
@@ -360,21 +413,45 @@ class ParcelaController extends Controller
             ->get();
 
         $modo = app(\App\Services\Financeiro\FinanceiroConfigService::class)->todas()['modo_cobranca'];
+
+        // Asaas: cobrança ativa de cada parcela (fatura, boleto em PDF, linha digitável).
+        $cobrancasAsaas = $modo === 'asaas'
+            ? DB::table('asaas_cobrancas')
+                ->whereIn('parcela_id', $rows->pluck('id'))
+                ->where('ativa', 1)
+                ->where('ambiente', app(\App\Services\Financeiro\Asaas\AsaasConfigService::class)->ambiente())
+                ->get(['parcela_id', 'status', 'valor', 'vencimento', 'invoice_url', 'bank_slip_url', 'linha_digitavel'])
+                ->keyBy('parcela_id')
+            : collect();
         $config = $this->helper->carregarConfiguracoes();
         $encargosZero = [
             'dias_atraso' => 0, 'dias_efetivos' => 0, 'multa_valor' => 0.0, 'juros_valor' => 0.0,
             'total_encargos' => 0.0, 'valor_com_encargos' => 0.0,
         ];
 
-        $parcelas = $rows->map(function ($row) use ($config, $encargosZero, $modo) {
+        $parcelas = $rows->map(function ($row) use ($config, $encargosZero, $modo, $cobrancasAsaas) {
             $arr = (array) $row;
             $arr['valor_original'] = (float) $row->valor_original;
             $arr['desconto_aplicado'] = (float) $row->desconto_aplicado;
             $arr['valor_final'] = (float) $row->valor_final;
             $arr['valor_pago'] = $row->valor_pago !== null ? (float) $row->valor_pago : null;
+            $aberta = in_array($row->status, ['pendente', 'vencido'], true);
             // Boleto que ainda pode ser pago (2ª via / linha digitável).
-            $arr['boleto_disponivel'] = $modo === 'sicoob_arquivo' && in_array($row->status, ['pendente', 'vencido'], true)
+            $arr['boleto_disponivel'] = $modo === 'sicoob_arquivo' && $aberta
                 && in_array($row->boleto_status, \App\Services\Financeiro\Sicoob\RemessaSicoobService::BOLETO_ATIVO, true);
+
+            $arr['cobranca'] = null;
+            $c = $cobrancasAsaas[$row->id] ?? null;
+            if ($c && $aberta && in_array($c->status, ['PENDING', 'OVERDUE'], true)) {
+                $arr['boleto_disponivel'] = true;
+                $arr['cobranca'] = [
+                    'valor'           => (float) $c->valor,
+                    'vencimento'      => $c->vencimento,
+                    'invoice_url'     => $c->invoice_url,
+                    'bank_slip_url'   => $c->bank_slip_url,
+                    'linha_digitavel' => $c->linha_digitavel,
+                ];
+            }
 
             if ($row->status === 'vencido') {
                 $arr = array_merge($arr, $this->helper->calcularEncargos($config, $row->data_vencimento, (float) $row->valor_final));
@@ -413,6 +490,25 @@ class ParcelaController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['error' => 'Boleto indisponível no momento. Fale com a secretaria da escola.'], 422);
         }
+    }
+
+    /**
+     * Pix da cobrança Asaas de uma parcela do dependente. Buscado na hora: sem
+     * chave Pix cadastrada na conta da escola, o QR Code vale só até 23:59 do dia.
+     */
+    public function meuPix(Request $request, int $id): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        $alunoId = (int) DB::table('parcelas')->where('id', $id)->value('aluno_id');
+        if (!$alunoId || !$this->ehDependente((int) ($jwtUser->id ?? 0), $alunoId)) {
+            return response()->json(['error' => 'Parcela não encontrada.'], 404);
+        }
+        try {
+            $pix = app(\App\Services\Financeiro\Asaas\AsaasCobrancaService::class)->pix($id);
+        } catch (\App\Services\Financeiro\Asaas\AsaasException | \DomainException $e) {
+            return response()->json(['error' => 'Pix indisponível no momento. Use o boleto ou fale com a secretaria.'], 422);
+        }
+        return response()->json(['success' => true, 'data' => $pix]);
     }
 
     private function ehDependente(int $usuarioId, int $alunoId): bool

@@ -126,9 +126,6 @@ class FinanceiroHelperService
                 'valor_pago' => $valorPago,
             ]);
 
-            $seq = str_pad((int) DB::table('recibos')->count() + 1, 5, '0', STR_PAD_LEFT);
-            $numeroRecibo = 'REC-' . date('Y') . "-$seq";
-
             $responsavelNome = DB::table('responsaveis as r')
                 ->join('aluno_responsavel as ar', 'r.id', '=', 'ar.responsavel_id')
                 ->join('usuarios as u', 'r.usuario_id', '=', 'u.id')
@@ -151,18 +148,33 @@ class FinanceiroHelperService
                 str_replace(['dinheiro', 'pix', 'transferencia', 'boleto'], ['Dinheiro', 'Pix', 'Transferência', 'Boleto'], $formaPagamento)
             );
 
-            $reciboId = DB::table('recibos')->insertGetId([
-                'numero_recibo' => $numeroRecibo,
-                'baixa_id' => $baixaId,
-                'parcela_id' => $parcelaId,
-                'aluno_id' => $alunoId,
-                'responsavel_nome' => $responsavelNome,
-                'valor_recibo' => $valorPago,
-                'data_recibo' => $dataPagamento,
-                'forma_pagamento' => $formaLabel,
-                'descricao' => $descricaoRecibo,
-                'criado_por' => $usuarioId,
-            ]);
+            // Número sequencial (contagem + 1). Duas baixas ao mesmo tempo (ex.: dois
+            // pagamentos chegando do Asaas juntos) podem calcular o mesmo número —
+            // o UNIQUE de numero_recibo recusa a segunda, que tenta o seguinte.
+            $tentativa = 0;
+            while (true) {
+                $seq = str_pad((int) DB::table('recibos')->count() + 1 + $tentativa, 5, '0', STR_PAD_LEFT);
+                $numeroRecibo = 'REC-' . date('Y') . "-$seq";
+                try {
+                    $reciboId = DB::table('recibos')->insertGetId([
+                        'numero_recibo' => $numeroRecibo,
+                        'baixa_id' => $baixaId,
+                        'parcela_id' => $parcelaId,
+                        'aluno_id' => $alunoId,
+                        'responsavel_nome' => $responsavelNome,
+                        'valor_recibo' => $valorPago,
+                        'data_recibo' => $dataPagamento,
+                        'forma_pagamento' => $formaLabel,
+                        'descricao' => $descricaoRecibo,
+                        'criado_por' => $usuarioId,
+                    ]);
+                    break;
+                } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                    if (++$tentativa >= 5) {
+                        throw $e;
+                    }
+                }
+            }
 
             return ['baixa_id' => $baixaId, 'recibo_id' => $reciboId, 'numero_recibo' => $numeroRecibo];
         });

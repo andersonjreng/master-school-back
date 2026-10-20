@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Financeiro\Asaas\AsaasClient;
+use App\Services\Financeiro\Asaas\AsaasConfigService;
+use App\Services\Financeiro\Asaas\AsaasException;
 use App\Services\Financeiro\FinanceiroConfigService;
 use App\Services\Financeiro\Sicoob\ConvenioCobrancaService;
 use App\Services\Sistema\LogSistemaService;
@@ -20,6 +23,8 @@ class FinanceiroParametrosController extends Controller
     public function __construct(
         private FinanceiroConfigService $config,
         private ConvenioCobrancaService $convenios,
+        private AsaasConfigService $asaas,
+        private AsaasClient $asaasClient,
         private LogSistemaService $log,
     ) {
     }
@@ -31,6 +36,7 @@ class FinanceiroParametrosController extends Controller
             'convenio'             => $this->convenios->carregar('756'),
             'nosso_numero_minimo'  => $this->nossoNumeroMinimo(),
             'boletos_emitidos'     => DB::table('boletos_bancarios')->count(),
+            'asaas'                => $this->asaas->resumo() + ['webhook_url' => url('/api/webhooks/asaas')],
         ]]);
     }
 
@@ -71,6 +77,19 @@ class FinanceiroParametrosController extends Controller
             }
         }
 
+        // Asaas: ambiente + chave nova (vazia = mantém a atual). A chave nunca vai para o log.
+        $asaas = $request->input('asaas');
+        if (is_array($asaas)) {
+            try {
+                $this->asaas->salvar((string) ($asaas['ambiente'] ?? 'sandbox'), $asaas['api_key'] ?? null, (int) ($jwtUser->id ?? 0));
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['error' => $e->getMessage()], 422);
+            }
+        }
+        if ($modo === 'asaas' && !$this->asaas->apiKey()) {
+            return response()->json(['error' => 'Para cobrar pelo Asaas, cadastre a chave da API da conta da escola.'], 422);
+        }
+
         $minimo = $this->nossoNumeroMinimo();
         $proximo = is_array($conv) && isset($conv['proximo_nosso_numero']) ? (int) $conv['proximo_nosso_numero'] : null;
         if ($proximo !== null && $proximo < $minimo) {
@@ -102,7 +121,30 @@ class FinanceiroParametrosController extends Controller
         $this->log->registrar(
             $request, (int) ($jwtUser->id ?? 0), $jwtUser->nome ?? null, 'PARAMETROS_FINANCEIRO',
             '/api/parametrizacoes/financeiro', 'PUT', 'Parâmetros do financeiro atualizados', 200,
-            ['config' => $c, 'proximo_nosso_numero' => $proximo]
+            ['config' => $c, 'proximo_nosso_numero' => $proximo, 'asaas_ambiente' => $asaas['ambiente'] ?? null, 'asaas_chave_trocada' => !empty($asaas['api_key'])]
+        );
+
+        return $this->show();
+    }
+
+    /**
+     * "Testar conexão": consulta os dados da conta dona da chave. Confirma que a
+     * chave é válida, do ambiente certo, e que é a conta da escola (nome/CNPJ).
+     */
+    public function testarAsaas(Request $request): JsonResponse
+    {
+        try {
+            $conta = $this->asaasClient->dadosDaConta();
+        } catch (AsaasException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+        $this->asaas->registrarConta($conta);
+
+        $jwtUser = $request->attributes->get('max_user');
+        $this->log->registrar(
+            $request, (int) ($jwtUser->id ?? 0), $jwtUser->nome ?? null, 'ASAAS_TESTE_CONEXAO',
+            '/api/parametrizacoes/financeiro/asaas/testar', 'POST', "Conexão com o Asaas confirmada ({$conta['nome']})", 200,
+            ['ambiente' => $this->asaas->ambiente()]
         );
 
         return $this->show();

@@ -37,6 +37,19 @@ class CancelamentoMatriculaFinanceiraService
             ->where('p.matricula_financeira_id', $matriculaId)
             ->exists();
 
+        // Boletos Asaas em aberto das parcelas que vão sair deixam de valer (antes
+        // de mexer nas parcelas: se o Asaas recusar, a exceção aborta o cancelamento).
+        // Sem baixa, todas as parcelas são apagadas; com baixa, só as canceláveis.
+        $saem = !$temBaixa || $perdoarVencidas ? ['pendente', 'vencido'] : ['pendente'];
+        $abertas = DB::table('parcelas')->where('matricula_financeira_id', $matriculaId)->whereIn('status', $saem)->pluck('id')->all();
+        try {
+            app(\App\Services\Financeiro\Asaas\AsaasCicloVidaService::class)->cancelarDasParcelas($abertas);
+        } catch (\App\Services\Financeiro\Asaas\AsaasException $e) {
+            throw new \Exception('Não foi possível cancelar os boletos no Asaas: ' . $e->getMessage());
+        } catch (\DomainException $e) {
+            throw new \Exception($e->getMessage());
+        }
+
         if (!$temBaixa) {
             $parcelasAfetadas = DB::table('parcelas')->where('matricula_financeira_id', $matriculaId)->delete();
             DB::table('matriculas_financeiras')->where('id', $matriculaId)->delete();
