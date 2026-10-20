@@ -149,7 +149,7 @@ class BnccController extends Controller
             $totalHabilidades = DB::table('habilidades_bncc')->where('etapa', $etapaBncc)->where('ativo', 1)->count();
         }
 
-        $query = DB::table('turma_aluno as ta')
+        $query = DB::table(DB::raw(app(\App\Services\Turmas\TurmaSituacaoService::class)->tabelaRoster($turmaId) . ' as ta'))
             ->join('alunos as a', 'ta.aluno_id', '=', 'a.id')
             ->join('usuarios as u', 'a.usuario_id', '=', 'u.id')
             ->leftJoin('registros_bncc as rb', function ($join) use ($semestreId, $turmaId) {
@@ -200,6 +200,10 @@ class BnccController extends Controller
         }
         if (empty($registros)) {
             return response()->json(['error' => 'Sem registros.', 'message' => 'Nenhum registro de habilidade foi enviado.'], 400);
+        }
+
+        if ($bloqueio = app(\App\Services\Turmas\TurmaSituacaoService::class)->bloqueio((int) $turmaId)) {
+            return $bloqueio;
         }
 
         $professorId = null;

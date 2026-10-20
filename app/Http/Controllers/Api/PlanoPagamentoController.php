@@ -28,8 +28,18 @@ class PlanoPagamentoController extends Controller
             $query->where('ativo', 1);
         }
 
-        $planos = $query->get()->map(function ($row) {
+        $turmasPorPlano = DB::table('plano_pagamento_turma as pt')
+            ->join('turmas as t', 't.id', '=', 'pt.turma_id')
+            ->orderBy('t.nome_turma')
+            ->get(['pt.plano_id', 't.id', 't.nome_turma', 't.ano_letivo'])
+            ->groupBy('plano_id');
+
+        $planos = $query->get()->map(function ($row) use ($turmasPorPlano) {
             $arr = (array) $row;
+            $turmas = collect($turmasPorPlano[$row->id] ?? []);
+            $arr['turma_ids'] = $turmas->pluck('id')->map(fn ($id) => (int) $id)->values();
+            $arr['turmas'] = $turmas->map(fn ($t) => ['id' => (int) $t->id, 'nome' => $t->nome_turma, 'ano_letivo' => (int) $t->ano_letivo])->values();
+            $arr['contratos_ativos'] = (int) DB::table('matriculas_financeiras')->where('plano_id', $row->id)->where('status', 'ativa')->count();
             $arr['valor_total'] = (float) $row->valor_total;
             $arr['numero_parcelas'] = (int) $row->numero_parcelas;
             $arr['dia_vencimento'] = (int) $row->dia_vencimento;
@@ -65,6 +75,8 @@ class PlanoPagamentoController extends Controller
             'numero_parcelas' => $numeroParcelas,
             'dia_vencimento' => $diaVencimento,
         ]);
+
+        $this->sincronizarTurmas($id, $request->input('turma_ids'));
 
         $this->log->registrar(
             $request, (int) ($jwtUser->id ?? 0), $jwtUser->nome ?? null, 'CRIACAO_PLANO_PAGAMENTO',
@@ -110,6 +122,8 @@ class PlanoPagamentoController extends Controller
             'ativo' => $ativo,
         ]);
 
+        $this->sincronizarTurmas($id, $request->input('turma_ids'));
+
         $this->log->registrar(
             $request, (int) ($jwtUser->id ?? 0), $jwtUser->nome ?? null, 'ATUALIZACAO_PLANO_PAGAMENTO',
             '/api/financeiro/planos', 'PUT', "Plano #$id \"$nome\" atualizado", 200, ['plano_id' => $id]
@@ -147,5 +161,18 @@ class PlanoPagamentoController extends Controller
         );
 
         return response()->json(['success' => true, 'message' => 'Plano inativado com sucesso.']);
+    }
+
+    /** Turmas em que o plano é sugerido (null = não mexe, para clientes antigos). */
+    private function sincronizarTurmas(int $planoId, $turmaIds): void
+    {
+        if (!is_array($turmaIds)) {
+            return;
+        }
+        DB::table('plano_pagamento_turma')->where('plano_id', $planoId)->delete();
+        $linhas = array_map(fn ($t) => ['plano_id' => $planoId, 'turma_id' => (int) $t], array_unique(array_filter($turmaIds)));
+        if ($linhas) {
+            DB::table('plano_pagamento_turma')->insert($linhas);
+        }
     }
 }

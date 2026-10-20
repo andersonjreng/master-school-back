@@ -23,7 +23,7 @@ class VinculoProfessorTurmaDisciplinaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
             return response()->json(['error' => 'Acesso negado. Apenas Administradores podem gerenciar vínculos de disciplinas e turmas.'], 403);
         }
 
@@ -79,7 +79,7 @@ class VinculoProfessorTurmaDisciplinaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Administrador', $funcoes, true)) {
+        if (!\App\Support\Papeis::ehGestor($funcoes)) {
             return response()->json(['error' => 'Acesso negado. Apenas Administradores podem gerenciar vínculos de disciplinas e turmas.'], 403);
         }
 

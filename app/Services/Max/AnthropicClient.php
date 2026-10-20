@@ -32,6 +32,38 @@ class AnthropicClient
         return $resposta;
     }
 
+    /**
+     * Pedido simples, sem ferramentas (briefing, explicação de gráfico).
+     *
+     * @return array{texto: string, tokens_entrada: int, tokens_saida: int}
+     */
+    public function gerarTexto(string $systemPrompt, string $mensagem, int $maxTokens = 700, int $timeout = 30): array
+    {
+        $response = Http::withHeaders([
+                'x-api-key'         => config('max.anthropic_api_key'),
+                'anthropic-version' => '2023-06-01',
+            ])
+            ->timeout($timeout)
+            ->post('https://api.anthropic.com/v1/messages', [
+                'model'      => config('max.anthropic_model'),
+                'max_tokens' => $maxTokens,
+                'system'     => $systemPrompt,
+                'messages'   => [['role' => 'user', 'content' => $mensagem]],
+            ]);
+
+        $d = $response->json();
+        if (!is_array($d) || isset($d['error'])) {
+            throw new \RuntimeException('Max indisponível no momento: ' . ($d['error']['message'] ?? 'resposta inválida'));
+        }
+        $texto = collect($d['content'] ?? [])->where('type', 'text')->pluck('text')->implode("\n");
+
+        return [
+            'texto'          => trim($texto),
+            'tokens_entrada' => (int) ($d['usage']['input_tokens'] ?? 0),
+            'tokens_saida'   => (int) ($d['usage']['output_tokens'] ?? 0),
+        ];
+    }
+
     private function chamar(array $messages, array $tools, string $systemPrompt): array
     {
         $payload = [

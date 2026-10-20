@@ -69,8 +69,12 @@ class MatriculaFinanceiraController extends Controller
         $observacoes = trim((string) $request->input('observacoes', ''));
         $alunos = $request->input('alunos', []);
 
-        if (!$planoId || !$anoLetivo || !$dataInicio || !is_array($alunos) || count($alunos) === 0) {
-            return response()->json(['error' => 'plano_id, ano_letivo, data_inicio e alunos (array não vazio) são obrigatórios.'], 400);
+        if (!$anoLetivo || !$dataInicio || !is_array($alunos) || count($alunos) === 0) {
+            return response()->json(['error' => 'ano_letivo, data_inicio e alunos (array não vazio) são obrigatórios.'], 400);
+        }
+        // Cada aluno pode trazer o próprio plano_id (virada: turmas diferentes); senão vale o do lote.
+        if (!$planoId && collect($alunos)->contains(fn ($a) => empty($a['plano_id']))) {
+            return response()->json(['error' => 'Informe o plano do lote ou de cada aluno.'], 400);
         }
 
         $criadas = 0;
@@ -83,6 +87,7 @@ class MatriculaFinanceiraController extends Controller
             if (!$alunoId) {
                 continue;
             }
+            $planoAluno = (int) ($item['plano_id'] ?? 0) ?: $planoId;
 
             // Bolsa integral tem prioridade sobre qualquer outro desconto configurado pra esse aluno.
             $bolsaIntegral = !empty($item['bolsa_integral']);
@@ -111,7 +116,7 @@ class MatriculaFinanceiraController extends Controller
             try {
                 $resultado = $this->matriculas->criar($usuarioIdLogado, [
                     'aluno_id' => $alunoId,
-                    'plano_id' => $planoId,
+                    'plano_id' => $planoAluno,
                     'ano_letivo' => $anoLetivo,
                     'data_inicio' => $dataInicio,
                     'desconto_padrao_id' => $descontoPadraoId,
@@ -134,7 +139,7 @@ class MatriculaFinanceiraController extends Controller
                     $request, $usuarioIdLogado, $jwtUser->nome ?? null, 'CRIACAO_MATRICULA_FINANCEIRA',
                     '/api/financeiro/matriculas/lote', 'POST',
                     "Matrícula financeira #{$resultado['matricula_id']} criada em lote para aluno #$alunoId", 201,
-                    ['matricula_id' => $resultado['matricula_id'], 'aluno_id' => $alunoId, 'plano_id' => $planoId]
+                    ['matricula_id' => $resultado['matricula_id'], 'aluno_id' => $alunoId, 'plano_id' => $planoAluno]
                 );
             } catch (\Throwable $eAluno) {
                 $erros++;

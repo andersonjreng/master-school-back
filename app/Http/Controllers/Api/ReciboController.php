@@ -32,11 +32,12 @@ class ReciboController extends Controller
         $query = DB::table('recibos as r')
             ->join('alunos as a', 'r.aluno_id', '=', 'a.id')
             ->join('usuarios as u', 'a.usuario_id', '=', 'u.id')
-            ->join('usuarios as uc', 'r.criado_por', '=', 'uc.id')
+            // criado_por = 0: recibo gerado pela baixa automática do Asaas.
+            ->leftJoin('usuarios as uc', 'r.criado_por', '=', 'uc.id')
             ->leftJoin('baixas_pagamento as bp', 'r.baixa_id', '=', 'bp.id')
             ->select([
                 'r.id', 'r.numero_recibo', 'r.valor_recibo', 'r.data_recibo', 'r.forma_pagamento', 'r.descricao', 'r.criado_em',
-                'r.responsavel_nome', 'u.nome_completo as aluno_nome', 'r.aluno_id', 'uc.nome_completo as criado_por_nome',
+                'r.responsavel_nome', 'u.nome_completo as aluno_nome', 'r.aluno_id', DB::raw("COALESCE(uc.nome_completo, 'Asaas (automático)') AS criado_por_nome"),
                 'bp.valor_principal', 'bp.valor_multa', 'bp.valor_juros',
             ])
             ->orderBy('r.criado_em', 'desc');

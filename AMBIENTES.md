@@ -168,7 +168,10 @@ A conta cPanel é `ande2326` (Hostgator, servidor `br48.hostgator.com.br`).
 não tem SSH habilitado por padrão, e o servidor rejeitava a conexão antes
 mesmo da autenticação com `"Not allowed at this time"`; o suporte confirmou
 e habilitou manualmente). Chave privada salva em `~/.ssh/hostgator_ande2326`
-nesta máquina (fora de qualquer repositório — nunca commitar).
+nesta máquina (fora de qualquer repositório — nunca commitar). Na troca de
+PC (2026-10-20) a chave antiga não veio: foi gerada uma nova e autorizada no
+cPanel → SSH Access → Manage SSH Keys (importar a pública → Authorize). O
+`~/.ssh/config` local tem o atalho `ssh hostgator`.
 
 ```bash
 ssh -i ~/.ssh/hostgator_ande2326 -p 22 ande2326@br48.hostgator.com.br
@@ -184,6 +187,46 @@ localmente. As seções abaixo sobre FTP/Gerenciador de Arquivos ficam como
 **plano B**, caso o acesso SSH seja revogado de novo — o histórico de como
 resolvemos isso sem SSH (achado real: zip feito no Windows não preserva
 permissões Unix, tinha que corrigir na unha) fica registrado por precaução.
+
+### Homologação × produção (desde 2026-10-20)
+
+Duas instalações do Laravel, lado a lado, cada uma com o seu `.env`:
+
+```
+teste.portalmasterschool.com.br   ───► backend ─► ~/laravel-homolog  (HOMOLOGAÇÃO — develop)
+cepelc.portalmasterschool.com.br  ─┐
+criarte.portalmasterschool.com.br ─┴─► backend ─► ~/laravel-deploy   (PRODUÇÃO — main)
+```
+
+- O que decide qual back atende cada escola é o symlink `backend` (e
+  `storage`) dentro da pasta do front daquela escola (`~/teste-front`,
+  `~/cepelc-front`, ...). Trocar de instalação = trocar o symlink.
+- `~/laravel-homolog/.env`: `APP_ENV=homologacao`, só o tenant `teste`
+  mapeado (as linhas de cepelc/criarte ficam comentadas), **`WHATSAPP_TOKEN`
+  vazio** — homologação nunca manda WhatsApp real. Mesmo `APP_KEY` e
+  `JWT_SECRET` da produção (os logins do `teste` continuaram valendo).
+- Uploads (`storage/app/public`) são separados: cada instalação tem os seus.
+- **Qual instalação respondeu?** Cada uma tem `public/ambiente-check.txt`
+  (`homologacao` / `producao`):
+  `curl https://teste.portalmasterschool.com.br/backend/ambiente-check.txt`.
+  O workflow de deploy confere isso no fim.
+- **Deploy** (GitHub Actions → "Deploy back (cPanel)"): escolher o
+  `ambiente`. `homologacao` aceita `develop` (ou `main`) e publica em
+  `~/laravel-homolog`; `producao` só aceita `main` e publica em
+  `~/laravel-deploy`. Backups separados por ambiente em `~/deploy-backups`
+  (`back-homologacao-*`, `back-producao-*`).
+- **Migrations**: continuam manuais. Na homologação, só no banco `teste`:
+  `cd ~/laravel-homolog && php artisan migrate`. Na produção, banco a banco
+  (`DB_DATABASE=<banco> php artisan migrate`), sempre com backup antes.
+- Fluxo: feature → `develop` → deploy homologação → testar no `teste` →
+  `main` → migrations nos bancos das escolas (com backup) → deploy produção.
+
+Estado dos bancos em 2026-10-20 (`migrate:status`): `teste` até
+`2026_09_14_*`; `ande2326_master_school_criarte_db` com a tabela de
+migrations vazia (schema clonado do teste em 2026-09-30); banco real do
+cepelc (`ande2326_master_school_db`) **nunca rodou migration do Laravel**
+(não tem nem a tabela `migrations`) — precisa de um plano próprio antes da
+primeira publicação de produção que dependa de migration.
 
 ### Estrutura no servidor
 
