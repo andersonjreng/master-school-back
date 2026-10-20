@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -15,38 +16,63 @@ return new class extends Migration
      * - professores: CPF (único) e data de nascimento. O telefone de professor,
      *   aluno e usuário fica em usuarios.telefone (já existia, mas não era salvo).
      * - Normaliza telefone e CEP já gravados para só dígitos.
+     *
+     * Compatível com MySQL 5.7 (servidor) — sem REGEXP_REPLACE, que só existe
+     * no MySQL 8 / MariaDB: a normalização é feita em PHP. E retomável: cada
+     * ALTER só roda se a coluna ainda não existe (MySQL não desfaz DDL, então
+     * uma execução que falhou no meio deixava as colunas criadas e a migration
+     * pendente — foi o que aconteceu no banco teste em 2026-10-20).
      */
     public function up(): void
     {
-        DB::statement("
-            ALTER TABLE alunos
-                ADD COLUMN cpf VARCHAR(14) NULL AFTER matricula,
-                ADD COLUMN sexo ENUM('F','M','O') NULL AFTER data_nascimento,
-                ADD COLUMN cep VARCHAR(9) NULL AFTER endereco,
-                ADD COLUMN numero VARCHAR(20) NULL AFTER cep,
-                ADD COLUMN complemento VARCHAR(100) NULL AFTER numero,
-                ADD COLUMN bairro VARCHAR(100) NULL AFTER complemento,
-                ADD COLUMN cidade VARCHAR(100) NULL AFTER bairro,
-                ADD COLUMN uf CHAR(2) NULL AFTER cidade,
-                ADD COLUMN observacoes_saude TEXT NULL AFTER uf,
-                ADD UNIQUE KEY uq_alunos_cpf (cpf)
-        ");
+        if (!Schema::hasColumn('alunos', 'cpf')) {
+            DB::statement("
+                ALTER TABLE alunos
+                    ADD COLUMN cpf VARCHAR(14) NULL AFTER matricula,
+                    ADD COLUMN sexo ENUM('F','M','O') NULL AFTER data_nascimento,
+                    ADD COLUMN cep VARCHAR(9) NULL AFTER endereco,
+                    ADD COLUMN numero VARCHAR(20) NULL AFTER cep,
+                    ADD COLUMN complemento VARCHAR(100) NULL AFTER numero,
+                    ADD COLUMN bairro VARCHAR(100) NULL AFTER complemento,
+                    ADD COLUMN cidade VARCHAR(100) NULL AFTER bairro,
+                    ADD COLUMN uf CHAR(2) NULL AFTER cidade,
+                    ADD COLUMN observacoes_saude TEXT NULL AFTER uf,
+                    ADD UNIQUE KEY uq_alunos_cpf (cpf)
+            ");
+        }
 
-        DB::statement("
-            ALTER TABLE responsaveis
-                ADD COLUMN numero VARCHAR(20) NULL AFTER endereco,
-                ADD COLUMN complemento VARCHAR(100) NULL AFTER numero
-        ");
+        if (!Schema::hasColumn('responsaveis', 'numero')) {
+            DB::statement("
+                ALTER TABLE responsaveis
+                    ADD COLUMN numero VARCHAR(20) NULL AFTER endereco,
+                    ADD COLUMN complemento VARCHAR(100) NULL AFTER numero
+            ");
+        }
 
-        DB::statement("
-            ALTER TABLE professores
-                ADD COLUMN cpf VARCHAR(14) NULL AFTER usuario_id,
-                ADD COLUMN data_nascimento DATE NULL AFTER cpf,
-                ADD UNIQUE KEY uq_professores_cpf (cpf)
-        ");
+        if (!Schema::hasColumn('professores', 'cpf')) {
+            DB::statement("
+                ALTER TABLE professores
+                    ADD COLUMN cpf VARCHAR(14) NULL AFTER usuario_id,
+                    ADD COLUMN data_nascimento DATE NULL AFTER cpf,
+                    ADD UNIQUE KEY uq_professores_cpf (cpf)
+            ");
+        }
 
-        DB::statement("UPDATE responsaveis SET telefone = NULLIF(REGEXP_REPLACE(telefone, '[^0-9]', ''), ''), cep = NULLIF(REGEXP_REPLACE(cep, '[^0-9]', ''), '')");
-        DB::statement("UPDATE usuarios SET telefone = NULLIF(REGEXP_REPLACE(telefone, '[^0-9]', ''), '') WHERE telefone IS NOT NULL");
+        $digitos = fn ($v) => $v === null ? null : (preg_replace('/\D/', '', (string) $v) ?: null);
+
+        foreach (DB::table('responsaveis')->get(['id', 'telefone', 'cep']) as $r) {
+            $tel = $digitos($r->telefone);
+            $cep = $digitos($r->cep);
+            if ($tel !== $r->telefone || $cep !== $r->cep) {
+                DB::table('responsaveis')->where('id', $r->id)->update(['telefone' => $tel, 'cep' => $cep]);
+            }
+        }
+        foreach (DB::table('usuarios')->whereNotNull('telefone')->get(['id', 'telefone']) as $u) {
+            $tel = $digitos($u->telefone);
+            if ($tel !== $u->telefone) {
+                DB::table('usuarios')->where('id', $u->id)->update(['telefone' => $tel]);
+            }
+        }
     }
 
     public function down(): void
