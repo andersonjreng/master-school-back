@@ -1,16 +1,22 @@
 # Deploy manual do backend Laravel para o cPanel (Hostgator).
 #
 # Disparo: GitHub → Actions → "Deploy back (cPanel)" → Run workflow.
-# Um único deploy atende TODAS as escolas (teste, cepelc, criarte): o
-# multi-tenant é por subdomínio, via ResolveTenantDatabase (ver AMBIENTES.md).
+#
+# Dois ambientes, duas instalações do Laravel no servidor (ver AMBIENTES.md):
+#   - homologacao → ~/laravel-homolog  — atende só teste.portalmasterschool.com.br.
+#                    Aceita a develop. É onde tudo é testado antes de ir pras escolas.
+#   - producao    → ~/laravel-deploy   — atende as escolas clientes (cepelc,
+#                    criarte...). Só a main. O multi-tenant é por subdomínio,
+#                    via ResolveTenantDatabase.
 #
 # O que ele faz:
 #   1. Monta o pacote completo do código (redeploy completo, nunca parcial)
 #      com vendor/ de produção, num runner Linux (tar preserva permissões).
 #   2. Envia um único .tar.gz pro servidor e confere o checksum.
-#   3. Faz backup do código atual em ~/deploy-backups (mantém os 5 últimos).
-#   4. Extrai por cima de laravel-deploy/ sem tocar em .env e storage/.
-#   5. Limpa os caches do Laravel e testa o login nos três subdomínios.
+#   3. Faz backup do código atual em ~/deploy-backups (mantém os 5 últimos por ambiente).
+#   4. Extrai por cima da instalação do ambiente sem tocar em .env e storage/.
+#   5. Limpa os caches, testa o login nos subdomínios do ambiente e confere
+#      (pelo public/ambiente-check.txt) que cada um caiu na instalação certa.
 #
 # NÃO roda migrations: com vários bancos (um por escola), migration continua
 # sendo um passo manual e consciente, por enquanto.
@@ -23,6 +29,14 @@ name: Deploy back (cPanel)
 on:
   workflow_dispatch:
     inputs:
+      ambiente:
+        description: "Onde publicar (homologação aceita develop; produção só main)"
+        type: choice
+        required: true
+        default: homologacao
+        options:
+          - homologacao
+          - producao
       check_testado:
         description: "Testei localmente os endpoints que mudaram"
         type: boolean
@@ -40,12 +54,14 @@ on:
         default: false
 
 concurrency:
-  group: deploy-back
+  group: deploy-back-${{ inputs.ambiente }}
   cancel-in-progress: false
 
 env:
-  REMOTE_APP_DIR: /home2/ande2326/laravel-deploy
-  SMOKE_HOSTS: "teste.portalmasterschool.com.br cepelc.portalmasterschool.com.br criarte.portalmasterschool.com.br"
+  REMOTE_APP_DIR: ${{ inputs.ambiente == 'producao' && '/home2/ande2326/laravel-deploy' || '/home2/ande2326/laravel-homolog' }}
+  SMOKE_HOSTS: ${{ inputs.ambiente == 'producao' && 'cepelc.portalmasterschool.com.br criarte.portalmasterschool.com.br' || 'teste.portalmasterschool.com.br' }}
+  # Arquivo em public/ que diz qual instalação respondeu (confere o symlink 'backend').
+  AMBIENTE_ESPERADO: ${{ inputs.ambiente == 'producao' && 'producao' || 'homologacao' }}
 
 jobs:
   deploy:
@@ -53,9 +69,11 @@ jobs:
     steps:
       - name: Conferir checklist e branch
         run: |
-          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
-            echo "::error::Deploy do back só pode ser feito a partir da main (selecionado: ${{ github.ref_name }})."
-            exit 1
+          ref="${{ github.ref_name }}"
+          if [ "${{ inputs.ambiente }}" = "producao" ]; then
+            [ "$ref" = "main" ] || { echo "::error::Produção só aceita deploy da main (selecionado: $ref)."; exit 1; }
+          else
+            [ "$ref" = "develop" ] || [ "$ref" = "main" ] || { echo "::error::Homologação aceita develop ou main (selecionado: $ref)."; exit 1; }
           fi
           if [ "${{ inputs.check_testado }}" != "true" ] || [ "${{ inputs.check_migration }}" != "true" ] || [ "${{ inputs.check_env }}" != "true" ]; then
             echo "::error::Marque todos os itens do checklist antes de fazer o deploy."
@@ -112,30 +130,30 @@ jobs:
         run: |
           retry() { n=0; until "$@"; do n=$((n+1)); [ $n -ge 6 ] && return 1; echo "Falhou, tentando de novo ($n/6)..."; sleep 8; done; }
           retry ssh deploy 'mkdir -p ~/deploy-staging ~/deploy-backups'
-          retry scp ../pacote/back.tar.gz deploy:deploy-staging/back.tar.gz
-          retry ssh deploy "echo '$(cat ../pacote/back.sha256)  deploy-staging/back.tar.gz' | sha256sum -c -"
+          retry scp ../pacote/back.tar.gz deploy:deploy-staging/back-$AMBIENTE_ESPERADO.tar.gz
+          retry ssh deploy "echo '$(cat ../pacote/back.sha256)  deploy-staging/back-$AMBIENTE_ESPERADO.tar.gz' | sha256sum -c -"
 
       - name: Aplicar no servidor
         run: |
           retry() { n=0; until "$@"; do n=$((n+1)); [ $n -ge 6 ] && return 1; echo "Falhou, tentando de novo ($n/6)..."; sleep 8; done; }
           cat > remoto.sh <<'EOF'
           set -euo pipefail
-          APP="$1"; SHA="$2"
-          STAGING=~/deploy-staging/back
+          APP="$1"; SHA="$2"; AMB="$3"
+          STAGING=~/deploy-staging/back-$AMB
           cd "$APP"
 
           php -r 'exit(version_compare(PHP_VERSION, "8.3", "<") ? 1 : 0);' \
             || { echo "PHP da linha de comando é menor que 8.3: $(php -v | head -1)"; exit 1; }
 
           # Backup do código atual (sem vendor/storage, que são grandes ou dados).
-          BKP=~/deploy-backups/back-$(date +%Y%m%d-%H%M%S)-${SHA:0:7}.tar.gz
+          BKP=~/deploy-backups/back-$AMB-$(date +%Y%m%d-%H%M%S)-${SHA:0:7}.tar.gz
           tar -czf "$BKP" --exclude=./vendor --exclude=./storage .
-          ls -1t ~/deploy-backups/back-*.tar.gz | tail -n +6 | xargs -r rm -f
+          ls -1t ~/deploy-backups/back-$AMB-*.tar.gz | tail -n +6 | xargs -r rm -f
           echo "Backup: $BKP"
 
           # Extrai num staging e troca o vendor/ com mv (troca quase instantânea).
           rm -rf "$STAGING" && mkdir -p "$STAGING"
-          tar -xzf ~/deploy-staging/back.tar.gz -C "$STAGING"
+          tar -xzf ~/deploy-staging/back-$AMB.tar.gz -C "$STAGING"
           rm -rf "$APP/vendor.old"
           [ -d "$APP/vendor" ] && mv "$APP/vendor" "$APP/vendor.old"
           mv "$STAGING/vendor" "$APP/vendor"
@@ -152,8 +170,10 @@ jobs:
           php artisan view:clear
           php artisan --version
           echo "$SHA" > "$APP/storage/deploy-version.txt"
+          # Marcador público: o teste abaixo confere que cada subdomínio caiu na instalação certa.
+          echo "$AMB" > "$APP/public/ambiente-check.txt"
           EOF
-          retry ssh deploy "bash -s -- '$REMOTE_APP_DIR' '${{ github.sha }}'" < remoto.sh
+          retry ssh deploy "bash -s -- '$REMOTE_APP_DIR' '${{ github.sha }}' '$AMBIENTE_ESPERADO'" < remoto.sh
 
       - name: Testar login nos subdomínios
         run: |
@@ -167,12 +187,15 @@ jobs:
               400|401|422) ;;               # Laravel respondeu e recusou login vazio: OK
               *) echo "::error::$h respondeu HTTP $code"; falhou=1 ;;
             esac
+            amb=$(curl -s --max-time 20 "https://$h/backend/ambiente-check.txt" | head -1 | cut -d' ' -f1)
+            echo "$h → instalação: $amb"
+            [ "$amb" = "$AMBIENTE_ESPERADO" ] || { echo "::error::$h está na instalação '$amb', esperado '$AMBIENTE_ESPERADO' (confira o symlink backend)"; falhou=1; }
           done
           exit $falhou
 
       - name: Resumo
         if: always()
         run: |
-          echo "### Deploy back — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "### Deploy back (${{ inputs.ambiente }}) — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           echo "Commit: \`${{ github.sha }}\` por @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "Backup do código anterior em \`~/deploy-backups\` no servidor." >> $GITHUB_STEP_SUMMARY
