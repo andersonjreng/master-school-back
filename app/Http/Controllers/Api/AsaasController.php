@@ -7,10 +7,12 @@ use App\Services\Financeiro\Asaas\AsaasClienteService;
 use App\Services\Financeiro\Asaas\AsaasCobrancaService;
 use App\Services\Financeiro\Asaas\AsaasConfigService;
 use App\Services\Financeiro\Asaas\AsaasException;
+use App\Services\Financeiro\Asaas\AsaasSincronizacaoService;
 use App\Services\Financeiro\FinanceiroConfigService;
 use App\Services\Sistema\LogSistemaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Central Asaas (Financeiro): pagadores sincronizados com o Asaas e,
@@ -23,6 +25,7 @@ class AsaasController extends Controller
         private AsaasCobrancaService $cobrancas,
         private AsaasConfigService $config,
         private FinanceiroConfigService $financeiro,
+        private AsaasSincronizacaoService $sincronizacao,
         private LogSistemaService $log,
     ) {
     }
@@ -165,6 +168,36 @@ class AsaasController extends Controller
         );
 
         return response()->json(['success' => true, 'message' => 'Cobrança cancelada no Asaas.']);
+    }
+
+    /** "Sincronizar com o Asaas": pergunta o status das cobranças em aberto e dá as baixas. */
+    public function sincronizar(Request $request): JsonResponse
+    {
+        if (!$this->config->apiKey()) {
+            return response()->json(['error' => 'Cadastre a chave da API do Asaas em Parametrizações → Financeiro.'], 422);
+        }
+        $res = $this->sincronizacao->sincronizar();
+
+        $jwtUser = $request->attributes->get('max_user');
+        $this->log->registrar(
+            $request, (int) ($jwtUser->id ?? 0), $jwtUser->nome ?? null, 'ASAAS_SINCRONIZAR',
+            '/api/financeiro/asaas/sincronizar', 'POST',
+            "Sincronização Asaas: {$res['consultadas']} consultadas, {$res['baixas']} baixas, {$res['alteradas']} alteradas, {$res['erros']} erros", 200,
+            ['detalhes' => $res['detalhes']]
+        );
+
+        return response()->json(['success' => true, 'data' => $res]);
+    }
+
+    /** Últimos avisos (webhooks) recebidos do Asaas — para conferir se estão chegando. */
+    public function eventos(): JsonResponse
+    {
+        $eventos = DB::table('asaas_webhook_eventos as e')
+            ->leftJoin('asaas_cobrancas as c', 'c.payment_id', '=', 'e.payment_id')
+            ->orderByDesc('e.id')->limit(100)
+            ->get(['e.id', 'e.evento', 'e.payment_id', 'e.recebido_em', 'e.resultado', 'e.mensagem', 'c.parcela_id']);
+
+        return response()->json(['success' => true, 'data' => $eventos]);
     }
 
     private function dias(Request $request): int
