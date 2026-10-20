@@ -153,8 +153,10 @@ Route::prefix('responsaveis')->middleware('max.jwt')->group(function () {
 
 // Avisos do Asaas (webhook). Público: autentica pelo token no header
 // asaas-access-token; a escola vem do subdomínio (ResolveTenantDatabase).
-Route::post('/webhooks/asaas', [\App\Http\Controllers\Api\AsaasWebhookController::class, 'receber'])
-    ->middleware('throttle:120,1');
+// Sem limite de requisições de propósito: num dia de muitos pagamentos o
+// Asaas manda rajadas de avisos, e respostas 429 contam como falha — 15
+// seguidas pausam a fila de webhooks da escola. O token já barra terceiros.
+Route::post('/webhooks/asaas', [\App\Http\Controllers\Api\AsaasWebhookController::class, 'receber']);
 
 // Equivalente a api/financeiro/*.php, incluindo api/financeiro/convenio/*.php
 // (boleto bancário Sicoob — remessa/retorno CNAB, boleto visual).
