@@ -116,11 +116,12 @@ class AsaasRetornoService
 
         $forma = match ($payment['billingType'] ?? '') {
             'PIX' => 'pix',
+            'RECEIVED_IN_CASH' => 'dinheiro', // marcado como recebido direto no painel do Asaas
             'CREDIT_CARD' => 'cartao_credito',
             'DEBIT_CARD' => 'cartao_debito',
             default => 'boleto',
         };
-        $comoPagou = $forma === 'pix' ? 'Pix' : 'boleto';
+        $comoPagou = match ($forma) { 'pix' => 'Pix', 'dinheiro' => 'recebimento fora do Asaas', default => 'boleto' };
         $via = $origem === 'webhook' ? 'aviso do Asaas' : 'sincronização com o Asaas';
 
         // usuarioId 0 = baixa automática (o recibo aparece como "Asaas (automático)").
