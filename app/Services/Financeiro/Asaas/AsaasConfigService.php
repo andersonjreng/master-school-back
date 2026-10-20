@@ -113,6 +113,11 @@ class AsaasConfigService
 
     private function linha(): ?object
     {
+        // O back é um só para todas as escolas: banco de escola que ainda não
+        // rodou a migration do Asaas se comporta como "Asaas não configurado".
+        if (!DB::getSchemaBuilder()->hasTable('asaas_configuracao')) {
+            return null;
+        }
         return DB::table('asaas_configuracao')->where('id', 1)->first();
     }
 
