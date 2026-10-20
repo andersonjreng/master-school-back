@@ -360,21 +360,45 @@ class ParcelaController extends Controller
             ->get();
 
         $modo = app(\App\Services\Financeiro\FinanceiroConfigService::class)->todas()['modo_cobranca'];
+
+        // Asaas: cobrança ativa de cada parcela (fatura, boleto em PDF, linha digitável).
+        $cobrancasAsaas = $modo === 'asaas'
+            ? DB::table('asaas_cobrancas')
+                ->whereIn('parcela_id', $rows->pluck('id'))
+                ->where('ativa', 1)
+                ->where('ambiente', app(\App\Services\Financeiro\Asaas\AsaasConfigService::class)->ambiente())
+                ->get(['parcela_id', 'status', 'valor', 'vencimento', 'invoice_url', 'bank_slip_url', 'linha_digitavel'])
+                ->keyBy('parcela_id')
+            : collect();
         $config = $this->helper->carregarConfiguracoes();
         $encargosZero = [
             'dias_atraso' => 0, 'dias_efetivos' => 0, 'multa_valor' => 0.0, 'juros_valor' => 0.0,
             'total_encargos' => 0.0, 'valor_com_encargos' => 0.0,
         ];
 
-        $parcelas = $rows->map(function ($row) use ($config, $encargosZero, $modo) {
+        $parcelas = $rows->map(function ($row) use ($config, $encargosZero, $modo, $cobrancasAsaas) {
             $arr = (array) $row;
             $arr['valor_original'] = (float) $row->valor_original;
             $arr['desconto_aplicado'] = (float) $row->desconto_aplicado;
             $arr['valor_final'] = (float) $row->valor_final;
             $arr['valor_pago'] = $row->valor_pago !== null ? (float) $row->valor_pago : null;
+            $aberta = in_array($row->status, ['pendente', 'vencido'], true);
             // Boleto que ainda pode ser pago (2ª via / linha digitável).
-            $arr['boleto_disponivel'] = $modo === 'sicoob_arquivo' && in_array($row->status, ['pendente', 'vencido'], true)
+            $arr['boleto_disponivel'] = $modo === 'sicoob_arquivo' && $aberta
                 && in_array($row->boleto_status, \App\Services\Financeiro\Sicoob\RemessaSicoobService::BOLETO_ATIVO, true);
+
+            $arr['cobranca'] = null;
+            $c = $cobrancasAsaas[$row->id] ?? null;
+            if ($c && $aberta && in_array($c->status, ['PENDING', 'OVERDUE'], true)) {
+                $arr['boleto_disponivel'] = true;
+                $arr['cobranca'] = [
+                    'valor'           => (float) $c->valor,
+                    'vencimento'      => $c->vencimento,
+                    'invoice_url'     => $c->invoice_url,
+                    'bank_slip_url'   => $c->bank_slip_url,
+                    'linha_digitavel' => $c->linha_digitavel,
+                ];
+            }
 
             if ($row->status === 'vencido') {
                 $arr = array_merge($arr, $this->helper->calcularEncargos($config, $row->data_vencimento, (float) $row->valor_final));
@@ -413,6 +437,25 @@ class ParcelaController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['error' => 'Boleto indisponível no momento. Fale com a secretaria da escola.'], 422);
         }
+    }
+
+    /**
+     * Pix da cobrança Asaas de uma parcela do dependente. Buscado na hora: sem
+     * chave Pix cadastrada na conta da escola, o QR Code vale só até 23:59 do dia.
+     */
+    public function meuPix(Request $request, int $id): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        $alunoId = (int) DB::table('parcelas')->where('id', $id)->value('aluno_id');
+        if (!$alunoId || !$this->ehDependente((int) ($jwtUser->id ?? 0), $alunoId)) {
+            return response()->json(['error' => 'Parcela não encontrada.'], 404);
+        }
+        try {
+            $pix = app(\App\Services\Financeiro\Asaas\AsaasCobrancaService::class)->pix($id);
+        } catch (\App\Services\Financeiro\Asaas\AsaasException | \DomainException $e) {
+            return response()->json(['error' => 'Pix indisponível no momento. Use o boleto ou fale com a secretaria.'], 422);
+        }
+        return response()->json(['success' => true, 'data' => $pix]);
     }
 
     private function ehDependente(int $usuarioId, int $alunoId): bool

@@ -161,6 +161,7 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
     Route::middleware('max.role:Responsável')->group(function () {
         Route::get('/minhas-parcelas', [ParcelaController::class, 'minhasParcelas']);
         Route::get('/minhas-parcelas/{id}/boleto', [ParcelaController::class, 'meuBoleto'])->whereNumber('id');
+        Route::get('/minhas-parcelas/{id}/pix', [ParcelaController::class, 'meuPix'])->whereNumber('id');
     });
 
     Route::middleware('max.role:Administrador,Diretoria')->group(function () {

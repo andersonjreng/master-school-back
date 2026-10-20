@@ -202,6 +202,30 @@ class AsaasCobrancaService
         ]);
     }
 
+    /**
+     * QR Code Pix (imagem base64 + copia e cola) da cobrança ativa da parcela.
+     *
+     * @throws AsaasException|\DomainException
+     */
+    public function pix(int $parcelaId): array
+    {
+        $c = DB::table('asaas_cobrancas')
+            ->where('parcela_id', $parcelaId)->where('ativa', 1)
+            ->where('ambiente', $this->asaasConfig->ambiente())
+            ->whereIn('status', ['PENDING', 'OVERDUE'])
+            ->first();
+        if (!$c) {
+            throw new \DomainException('Parcela sem cobrança em aberto no Asaas.');
+        }
+        $r = $this->api->get("/payments/{$c->payment_id}/pixQrCode");
+
+        return [
+            'imagem_base64' => $r['encodedImage'] ?? null,
+            'copia_e_cola'  => $r['payload'] ?? null,
+            'expira_em'     => $r['expirationDate'] ?? null,
+        ];
+    }
+
     /** Cobranças emitidas (a ativa de cada parcela + histórico), mais recentes primeiro. */
     public function listar(?string $situacao, ?string $busca): array
     {
