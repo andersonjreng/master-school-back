@@ -21,6 +21,9 @@ return new class extends Migration
      * - asaas_webhook_eventos: todo evento recebido, guardado antes de
      *   processar. O id do evento é único — o Asaas entrega "pelo menos uma
      *   vez", então o mesmo evento pode chegar repetido.
+     * - asaas_rotinas: cada execução das rotinas agendadas (emissão automática,
+     *   sincronização), para a Central mostrar a última.
+     * - asaas_emissao_automatica (configuracoes_financeiras): liga a emissão diária.
      * - modo_cobranca passa a aceitar 'asaas' (validado na aplicação).
      */
     public function up(): void
@@ -104,12 +107,33 @@ return new class extends Migration
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
 
+        // Cada execução das rotinas agendadas (emissão automática, sincronização),
+        // para a Central mostrar quando rodou pela última vez e o que fez.
+        DB::statement("
+            CREATE TABLE asaas_rotinas (
+                id INT NOT NULL AUTO_INCREMENT,
+                rotina ENUM('emissao','sincronizacao') NOT NULL,
+                executado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                resumo VARCHAR(255) NOT NULL,
+                detalhes LONGTEXT NULL,
+                PRIMARY KEY (id),
+                INDEX idx_asaas_rotinas (rotina, executado_em)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+        DB::table('configuracoes_financeiras')->insertOrIgnore([
+            'chave' => 'asaas_emissao_automatica', 'valor' => '0',
+            'descricao' => '1 = emite sozinho, todo dia, as cobranças das parcelas que vencem nos próximos N dias (remessa_dias_antecedencia)',
+        ]);
+
         DB::table('configuracoes_financeiras')->where('chave', 'modo_cobranca')
             ->update(['descricao' => 'manual = só controle interno; sicoob_arquivo = boletos Sicoob por remessa/retorno (CNAB 400); asaas = boleto com Pix pelo Asaas']);
     }
 
     public function down(): void
     {
+        DB::statement('DROP TABLE IF EXISTS asaas_rotinas');
+        DB::table('configuracoes_financeiras')->where('chave', 'asaas_emissao_automatica')->delete();
         DB::statement('DROP TABLE IF EXISTS asaas_webhook_eventos');
         DB::statement('DROP TABLE IF EXISTS asaas_cobrancas');
         DB::statement('DROP TABLE IF EXISTS asaas_clientes');

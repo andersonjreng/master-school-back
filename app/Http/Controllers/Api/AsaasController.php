@@ -7,6 +7,7 @@ use App\Services\Financeiro\Asaas\AsaasClienteService;
 use App\Services\Financeiro\Asaas\AsaasCobrancaService;
 use App\Services\Financeiro\Asaas\AsaasConfigService;
 use App\Services\Financeiro\Asaas\AsaasException;
+use App\Services\Financeiro\Asaas\AsaasRotinasService;
 use App\Services\Financeiro\Asaas\AsaasSincronizacaoService;
 use App\Services\Financeiro\FinanceiroConfigService;
 use App\Services\Sistema\LogSistemaService;
@@ -26,6 +27,7 @@ class AsaasController extends Controller
         private AsaasConfigService $config,
         private FinanceiroConfigService $financeiro,
         private AsaasSincronizacaoService $sincronizacao,
+        private AsaasRotinasService $rotinas,
         private LogSistemaService $log,
     ) {
     }
@@ -92,9 +94,11 @@ class AsaasController extends Controller
     public function resumoCobrancas(Request $request): JsonResponse
     {
         return response()->json(['success' => true, 'data' => $this->cobrancas->resumo($this->dias($request)) + [
-            'ambiente'  => $this->config->ambiente(),
-            'tem_chave' => $this->config->apiKey() !== null,
-            'dias'      => $this->dias($request),
+            'ambiente'           => $this->config->ambiente(),
+            'tem_chave'          => $this->config->apiKey() !== null,
+            'dias'               => $this->dias($request),
+            'emissao_automatica' => $this->financeiro->todas()['asaas_emissao_automatica'],
+            'rotinas'            => $this->rotinas->ultimas(),
         ]]);
     }
 
@@ -177,6 +181,8 @@ class AsaasController extends Controller
             return response()->json(['error' => 'Cadastre a chave da API do Asaas em Parametrizações → Financeiro.'], 422);
         }
         $res = $this->sincronizacao->sincronizar();
+        $this->rotinas->registrar('sincronizacao', "{$res['consultadas']} consultada(s), {$res['baixas']} baixa(s), {$res['alteradas']} alterada(s)"
+            . ($res['erros'] ? ", {$res['erros']} erro(s)" : '') . ' — pelo botão', $res['detalhes']);
 
         $jwtUser = $request->attributes->get('max_user');
         $this->log->registrar(

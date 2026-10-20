@@ -174,6 +174,34 @@ class AsaasCobrancaService
     }
 
     /**
+     * Emissão automática (rotina diária): emite as parcelas que vencem nos
+     * próximos N dias e ainda não têm cobrança.
+     *
+     * Ficam de fora, para alguém decidir na Central: parcelas já vencidas (o
+     * Asaas exige um vencimento novo, e escolher a data é decisão da escola)
+     * e as de responsável com cadastro incompleto.
+     *
+     * @return array{emitidas: int, falhas: int, pendencias: int, vencidas: int, resultado: array}
+     */
+    public function emitirAutomaticamente(int $limite = 300): array
+    {
+        $dias = $this->config->todas()['remessa_dias_antecedencia'];
+        $candidatas = collect($this->candidatas($dias));
+
+        $prontas = $candidatas->filter(fn ($c) => !$c['pendencia'] && !$c['vencida'])->take($limite);
+        $resultado = $prontas->isEmpty() ? [] : $this->emitirVarias($prontas->pluck('parcela_id')->all(), null, false, 0);
+
+        $ok = count(array_filter($resultado, fn ($r) => $r['ok']));
+        return [
+            'emitidas'   => $ok,
+            'falhas'     => count($resultado) - $ok,
+            'pendencias' => $candidatas->filter(fn ($c) => (bool) $c['pendencia'])->count(),
+            'vencidas'   => $candidatas->filter(fn ($c) => !$c['pendencia'] && $c['vencida'])->count(),
+            'resultado'  => $resultado,
+        ];
+    }
+
+    /**
      * Cancela a cobrança no Asaas (o boleto/Pix deixa de ser pagável) e libera
      * a parcela para uma nova emissão. Cobrança já paga não pode ser cancelada.
      *
@@ -255,11 +283,12 @@ class AsaasCobrancaService
 
         return $q->orderByDesc('c.criado_em')->limit(500)->get([
             'c.id', 'c.parcela_id', 'c.payment_id', 'c.status', 'c.valor', 'c.vencimento', 'c.invoice_url', 'c.bank_slip_url',
-            'c.linha_digitavel', 'c.valor_pago', 'c.data_pagamento', 'c.ativa', 'c.criado_em', 'c.cancelado_em',
+            'c.linha_digitavel', 'c.valor_pago', 'c.data_pagamento', 'c.ativa', 'c.criado_em', 'c.cancelado_em', 'c.criado_por',
             'ua.nome_completo as aluno', 'ur.nome_completo as responsavel',
             'p.numero_parcela', 'pp.numero_parcelas', 'pp.nome as plano_nome', 'p.data_vencimento as vencimento_parcela',
         ])->map(fn ($c) => (array) $c + [
             'status_label' => self::STATUS[$c->status] ?? $c->status,
+            'automatica'   => (int) $c->criado_por === 0,
         ])->all();
     }
 

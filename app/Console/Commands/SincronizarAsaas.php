@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Financeiro\Asaas\AsaasConfigService;
+use App\Services\Financeiro\Asaas\AsaasRotinasService;
 use App\Services\Financeiro\Asaas\AsaasSincronizacaoService;
 use App\Services\Financeiro\FinanceiroConfigService;
 use Illuminate\Console\Command;
@@ -46,6 +47,7 @@ class SincronizarAsaas extends Command
                     continue;
                 }
                 $r = app(AsaasSincronizacaoService::class)->sincronizar();
+                app(AsaasRotinasService::class)->registrar('sincronizacao', "{$r['consultadas']} consultada(s), {$r['baixas']} baixa(s), {$r['alteradas']} alterada(s)" . ($r['erros'] ? ", {$r['erros']} erro(s)" : ''), $r['detalhes']);
                 $this->info("[$dbname] Consultadas: {$r['consultadas']} | Baixas: {$r['baixas']} | Alteradas: {$r['alteradas']} | Erros: {$r['erros']}");
                 foreach ($r['detalhes'] as $d) {
                     $this->line("    parcela #{$d['parcela_id']}: {$d['mensagem']}");
