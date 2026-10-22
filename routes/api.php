@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\EscolaConfigController;
 use App\Http\Controllers\Api\FinanceiroController;
 use App\Http\Controllers\Api\FinanceiroParametrosController;
 use App\Http\Controllers\Api\FrequenciaController;
+use App\Http\Controllers\Api\InteressePaisController;
 use App\Http\Controllers\Api\ModeloAvaliacaoController;
 use App\Http\Controllers\Api\AnoLetivoController;
 use App\Http\Controllers\Api\LogController;
@@ -407,4 +408,12 @@ Route::prefix('escola')->middleware('max.jwt')->group(function () {
     Route::post('/configuracoes', [EscolaConfigController::class, 'update']);
     Route::post('/logo', [EscolaConfigController::class, 'setLogo']);
     Route::post('/logo/remover', [EscolaConfigController::class, 'deleteLogo']);
+});
+
+// Landing dos pais (pais.portalmasterschool.com.br) — pública, sem login.
+// Dados no banco comercial (fora do multi-tenant), ver InteressePai.
+Route::prefix('interesse-pais')->group(function () {
+    Route::post('/', [InteressePaisController::class, 'store'])->middleware('throttle:5,1');
+    Route::get('/contagem', [InteressePaisController::class, 'contagem'])->middleware('throttle:60,1');
+    Route::get('/exportar', [InteressePaisController::class, 'exportar'])->middleware('throttle:10,1');
 });
