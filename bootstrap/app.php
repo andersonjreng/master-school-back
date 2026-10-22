@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\AuditarRequisicao;
 use App\Http\Middleware\RequireRole;
 use App\Http\Middleware\ResolveTenantDatabase;
 use App\Http\Middleware\VerifyLegacyJwt;
@@ -19,6 +20,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // Precisa vir antes de qualquer coisa que toque o banco — resolve o
         // tenant (escola) pelo subdomínio da requisição.
         $middleware->prepend(ResolveTenantDatabase::class);
+
+        // Auditoria (logs_sistema) de escritas, acessos negados, downloads e
+        // erros de toda a API — ver AuditarRequisicao.
+        $middleware->api(append: AuditarRequisicao::class);
 
         $middleware->alias([
             'max.jwt'  => VerifyLegacyJwt::class,

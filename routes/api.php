@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AlunoController;
+use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AvaliacaoController;
 use App\Http\Controllers\Api\BnccController;
@@ -50,6 +51,12 @@ Route::prefix('agent')->middleware('max.jwt')->group(function () {
     Route::middleware('max.role:Administrador,Diretoria')->group(function () {
         Route::get('/uso-admin', [MaxUsageController::class, 'usoAdmin']);
     });
+});
+
+// Auditoria: eventos que só o front vê (telas visitadas, exportações feitas
+// no navegador, impressões, logout). Qualquer usuário logado.
+Route::prefix('auditoria')->middleware('max.jwt')->group(function () {
+    Route::post('/eventos', [AuditoriaController::class, 'eventos']);
 });
 
 // Equivalente a api/documentos/*.php do backend legado — mesmo JWT compartilhado
@@ -267,6 +274,12 @@ Route::prefix('admin')->middleware('max.jwt')->group(function () {
     // Logs do sistema: só Administrador (auditoria técnica).
     Route::middleware('max.role:Administrador')->group(function () {
         Route::get('/logs', [LogController::class, 'index']);
+        Route::get('/logs/filtros', [LogController::class, 'filtros']);
+        Route::get('/logs/resumo', [LogController::class, 'resumo']);
+        Route::get('/logs/exportar', [LogController::class, 'exportar']);
+        Route::get('/logs/sessoes', [LogController::class, 'sessoes']);
+        Route::get('/logs/sessoes/{sid}', [LogController::class, 'sessao'])->where('sid', '[A-Za-z0-9]+');
+        Route::get('/logs/{id}', [LogController::class, 'show'])->whereNumber('id');
     });
 
     Route::middleware('max.role:Administrador,Diretoria')->group(function () {

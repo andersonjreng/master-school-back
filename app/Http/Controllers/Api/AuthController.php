@@ -34,7 +34,8 @@ class AuthController extends Controller
         if (!$user || !Hash::check($senha, $user->senha)) {
             $this->log->registrar(
                 $request, $user->id ?? null, $email, 'LOGIN_FALHA',
-                '/api/auth/login', 'POST', "Tentativa de login falhou para: $email", 401
+                '/api/auth/login', 'POST', "Tentativa de login falhou para: $email", 401,
+                ['email' => $email, 'motivo' => $user ? 'senha_incorreta' : 'usuario_inexistente_ou_inativo']
             );
 
             return response()->json(['error' => 'Credenciais inválidas'], 401);
@@ -46,11 +47,16 @@ class AuthController extends Controller
             ->pluck('f.nome_funcao')
             ->all();
 
+        // "sid" agrupa na auditoria tudo o que foi feito neste login (sessão).
+        $sid = bin2hex(random_bytes(10));
+        $request->attributes->set(LogSistemaService::ATRIBUTO_SESSAO, $sid);
+
         $payload = [
             'id' => $user->id,
             'nome' => $user->nome_completo,
             'email' => $user->email,
             'funcoes' => $roles,
+            'sid' => $sid,
             'iat' => time(),
             'exp' => time() + 86400, // 24 horas
         ];
@@ -61,7 +67,8 @@ class AuthController extends Controller
 
         $this->log->registrar(
             $request, $user->id, $user->nome_completo, 'LOGIN_SUCESSO',
-            '/api/auth/login', 'POST', "Login realizado com sucesso por: {$user->nome_completo} ($email)", 200
+            '/api/auth/login', 'POST', "Login realizado com sucesso por: {$user->nome_completo} ($email)", 200,
+            ['email' => $email, 'perfis' => $roles]
         );
 
         return response()->json([
