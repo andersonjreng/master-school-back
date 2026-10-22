@@ -258,10 +258,10 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
     });
 });
 
-// Equivalente a api/whatsapp/{testar_notificacoes,get_historico_notificacoes}.php.
-// api/whatsapp/enviar_notificacoes_diarias.php (cron CLI multi-tenant) NÃO foi
-// portado — ver comentário em NotificacaoWhatsappController.
+// Notificações WhatsApp: painel, teste manual e histórico. O envio diário é o
+// comando whatsapp:notificacoes-diarias (cron).
 Route::prefix('whatsapp')->middleware(['max.jwt', 'max.role:Administrador,Diretoria'])->group(function () {
+    Route::get('/painel', [NotificacaoWhatsappController::class, 'painel']);
     Route::post('/testar', [NotificacaoWhatsappController::class, 'testar']);
     Route::get('/historico', [NotificacaoWhatsappController::class, 'historico']);
 });

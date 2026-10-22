@@ -10,13 +10,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Equivalente a api/whatsapp/{testar_notificacoes,get_historico_notificacoes}.php.
+ * Tela "Notificações WhatsApp" (Configurações): painel da integração, teste
+ * manual e histórico dos disparos. O envio diário roda no comando
+ * whatsapp:notificacoes-diarias (cron), que usa o mesmo serviço.
  *
- * api/whatsapp/enviar_notificacoes_diarias.php (cron CLI multi-tenant, varre
- * várias escolas/bancos) NÃO foi portado nesta etapa — não é um endpoint HTTP
- * chamado pelo frontend, e migrar o cron exigiria decidir como este backend
- * Laravel local (single-tenant) vai lidar com múltiplos bancos por escola.
- * Continua rodando como cron PHP legado por enquanto.
+ * Tipos de aviso e onde cada um é registrado (dedup):
+ * - nota               → notificacoes_whatsapp_enviadas
+ * - avaliacao_agendada → notificacoes_whatsapp_avaliacoes_enviadas
+ * - mural / recado / ocorrencia → comunicacao_whatsapp_enviados
  */
 class NotificacaoWhatsappController extends Controller
 {
@@ -26,33 +27,94 @@ class NotificacaoWhatsappController extends Controller
     ) {
     }
 
+    /** Estado da integração, cobertura dos responsáveis e números dos últimos 30 dias. */
+    public function painel(): JsonResponse
+    {
+        $resp = DB::table('responsaveis')->selectRaw("
+            COUNT(*) AS total,
+            COALESCE(SUM(telefone IS NULL OR telefone = ''), 0) AS sem_telefone,
+            COALESCE(SUM(notificacao_whatsapp_ativa = 1 AND telefone IS NOT NULL AND telefone <> ''), 0) AS ativos
+        ")->first();
+
+        $desde = now()->subDays(30)->startOfDay();
+        $porTipo = collect($this->linhasHistorico($desde->toDateString(), now()->toDateString()))
+            ->groupBy('tipo')
+            ->map(fn ($linhas) => [
+                'enviados' => $linhas->where('status', 'enviado')->count(),
+                'falhas' => $linhas->where('status', 'falha')->count(),
+                'ultimo' => $linhas->max('criado_em'),
+            ]);
+
+        $template = fn (string $chave) => (string) config("whatsapp.$chave");
+        $tipos = [
+            ['id' => 'nota', 'nome' => 'Nota lançada', 'template' => $template('template_name'),
+             'descricao' => 'Avisa o responsável quando sai nota nova ou alterada (várias notas do dia viram uma mensagem só).'],
+            ['id' => 'avaliacao_agendada', 'nome' => 'Avaliação agendada', 'template' => $template('template_name_avaliacao'),
+             'descricao' => 'Avisa os responsáveis da turma quando o professor cadastra uma avaliação, com a data.'],
+            ['id' => 'comunicacao', 'nome' => 'Comunicados, recados e ocorrências', 'template' => $template('template_name_comunicacao'),
+             'descricao' => 'Avisa sobre comunicado do mural, recado da escola ou ocorrência ainda não lidos no portal.',
+             'subtipos' => ['mural', 'recado', 'ocorrencia']],
+        ];
+        foreach ($tipos as &$t) {
+            $ids = $t['subtipos'] ?? [$t['id']];
+            $t['ativo'] = $t['template'] !== '';
+            $t['enviados_30d'] = collect($ids)->sum(fn ($id) => $porTipo[$id]['enviados'] ?? 0);
+            $t['falhas_30d'] = collect($ids)->sum(fn ($id) => $porTipo[$id]['falhas'] ?? 0);
+            $t['ultimo_envio'] = collect($ids)->map(fn ($id) => $porTipo[$id]['ultimo'] ?? null)->filter()->max();
+        }
+        unset($t);
+
+        $phoneId = (string) config('whatsapp.phone_number_id');
+
+        return response()->json([
+            'integracao' => [
+                'token' => (bool) config('whatsapp.token'),
+                'phone_number_id' => $phoneId ? '••••' . substr($phoneId, -4) : null,
+                'api_version' => config('whatsapp.api_version'),
+                'idioma' => config('whatsapp.template_lang'),
+                'portal_url' => config('whatsapp.portal_url'),
+            ],
+            'responsaveis' => [
+                'total' => (int) $resp->total,
+                'ativos' => (int) $resp->ativos,
+                'sem_telefone' => (int) $resp->sem_telefone,
+                'aptos_inativos' => max(0, (int) $resp->total - (int) $resp->sem_telefone - (int) $resp->ativos),
+            ],
+            'tipos' => $tipos,
+            'ultimos_30_dias' => [
+                'enviados' => $porTipo->sum('enviados'),
+                'falhas' => $porTipo->sum('falhas'),
+            ],
+        ]);
+    }
+
     /**
-     * Dispara manualmente, sob demanda, a mesma checagem que o cron diário faz.
-     * Idempotente (mesmas tabelas de dedup do cron real) — rodar de novo sobre a
-     * mesma nota/avaliação não reenvia.
+     * Dispara agora a mesma checagem do cron diário. Idempotente (mesmas
+     * tabelas de dedup) — rodar de novo sobre o mesmo item não reenvia.
      */
     public function testar(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
-        $usuarioIdLog = $jwtUser->id ?? null;
-        $usernameLog = $jwtUser->nome ?? 'desconhecido';
 
-        $resultadoNotas = $this->whatsapp->processarNotificacoesNotas();
-        $resultadoAvaliacoes = $this->whatsapp->processarAvisosAvaliacaoAgendada();
+        $notas = $this->whatsapp->processarNotificacoesNotas();
+        $avaliacoes = $this->whatsapp->processarAvisosAvaliacaoAgendada();
+        $comunicacao = $this->whatsapp->processarAvisosComunicacao();
 
-        $detalhesNotas = array_map(fn ($d) => $d + ['tipo' => 'nota'], $resultadoNotas['detalhes']);
-        $detalhesAvaliacoes = array_map(fn ($d) => $d + ['tipo' => 'avaliacao_agendada'], $resultadoAvaliacoes['detalhes']);
+        $detalhes = array_merge(
+            array_map(fn ($d) => $d + ['tipo' => 'nota'], $notas['detalhes']),
+            array_map(fn ($d) => $d + ['tipo' => 'avaliacao_agendada'], $avaliacoes['detalhes']),
+        );
 
-        $enviados = $resultadoNotas['enviados'] + $resultadoAvaliacoes['enviados'];
-        $ignorados = $resultadoNotas['ignorados'] + $resultadoAvaliacoes['ignorados'];
-        $falhas = $resultadoNotas['falhas'] + $resultadoAvaliacoes['falhas'];
+        $enviados = $notas['enviados'] + $avaliacoes['enviados'] + $comunicacao['enviados'];
+        $ignorados = $notas['ignorados'] + $avaliacoes['ignorados'] + $comunicacao['ignorados'];
+        $falhas = $notas['falhas'] + $avaliacoes['falhas'] + $comunicacao['falhas'];
 
         $this->log->registrar(
-            $request, $usuarioIdLog, $usernameLog, 'TESTE_NOTIFICACAO_WHATSAPP',
+            $request, $jwtUser->id ?? null, $jwtUser->nome ?? 'desconhecido', 'TESTE_NOTIFICACAO_WHATSAPP',
             '/api/whatsapp/testar', 'POST',
-            "Disparo manual de teste: $enviados enviado(s), $ignorados já notificado(s), $falhas falha(s) (notas + avaliações agendadas).",
+            "Disparo manual: $enviados enviado(s), $ignorados já notificado(s), $falhas falha(s).",
             200,
-            ['notas' => $resultadoNotas, 'avaliacoes' => $resultadoAvaliacoes]
+            ['notas' => $notas, 'avaliacoes' => $avaliacoes, 'comunicacao' => $comunicacao]
         );
 
         return response()->json([
@@ -60,14 +122,12 @@ class NotificacaoWhatsappController extends Controller
             'enviados' => $enviados,
             'ignorados' => $ignorados,
             'falhas' => $falhas,
-            'detalhes' => array_merge($detalhesNotas, $detalhesAvaliacoes),
+            'comunicacao' => $comunicacao,
+            'detalhes' => $detalhes,
         ]);
     }
 
-    /**
-     * Histórico de notificações já disparadas — une os dois tipos (nota lançada e
-     * avaliação agendada). Por padrão retorna os últimos 30 dias.
-     */
+    /** Histórico de disparos (todos os tipos). Padrão: últimos 30 dias. */
     public function historico(Request $request): JsonResponse
     {
         $dataInicio = $request->query('data_inicio', now()->subDays(30)->toDateString());
@@ -77,11 +137,18 @@ class NotificacaoWhatsappController extends Controller
             return response()->json(['error' => 'Parâmetros de data inválidos. Use o formato AAAA-MM-DD.'], 400);
         }
 
-        $rows = DB::select('
+        $historico = $this->linhasHistorico($dataInicio, $dataFim);
+
+        return response()->json(['success' => true, 'count' => count($historico), 'data' => $historico]);
+    }
+
+    private function linhasHistorico(string $dataInicio, string $dataFim): array
+    {
+        $rows = DB::select("
             SELECT
-                nwe.id, \'nota\' AS tipo, nwe.status, nwe.wamid, nwe.erro, nwe.telefone, nwe.criado_em,
+                nwe.id, 'nota' AS tipo, nwe.status, nwe.wamid, nwe.erro, nwe.telefone, nwe.criado_em,
                 ur.nome_completo AS nome_responsavel, ua.nome_completo AS nome_aluno,
-                d.nome_disciplina, a.descricao AS avaliacao_descricao
+                CONCAT_WS(' - ', d.nome_disciplina, NULLIF(a.descricao, '')) AS assunto
             FROM notificacoes_whatsapp_enviadas nwe
             JOIN responsaveis r ON nwe.responsavel_id = r.id
             JOIN usuarios ur    ON r.usuario_id = ur.id
@@ -94,9 +161,9 @@ class NotificacaoWhatsappController extends Controller
             UNION ALL
 
             SELECT
-                nwa.id, \'avaliacao_agendada\' AS tipo, nwa.status, nwa.wamid, nwa.erro, nwa.telefone, nwa.criado_em,
-                ur2.nome_completo AS nome_responsavel, ua2.nome_completo AS nome_aluno,
-                d2.nome_disciplina, a2.descricao AS avaliacao_descricao
+                nwa.id, 'avaliacao_agendada' AS tipo, nwa.status, nwa.wamid, nwa.erro, nwa.telefone, nwa.criado_em,
+                ur2.nome_completo, ua2.nome_completo,
+                CONCAT_WS(' - ', d2.nome_disciplina, NULLIF(a2.descricao, ''))
             FROM notificacoes_whatsapp_avaliacoes_enviadas nwa
             JOIN responsaveis r2 ON nwa.responsavel_id = r2.id
             JOIN usuarios ur2    ON r2.usuario_id = ur2.id
@@ -106,17 +173,24 @@ class NotificacaoWhatsappController extends Controller
             JOIN disciplinas d2  ON a2.disciplina_id = d2.id
             WHERE DATE(nwa.criado_em) BETWEEN ? AND ?
 
+            UNION ALL
+
+            SELECT
+                c.id, c.tipo, c.status, NULL, c.erro, r3.telefone, c.enviado_em,
+                ur3.nome_completo, NULL,
+                CASE c.tipo
+                    WHEN 'mural' THEN (SELECT titulo FROM mural_posts WHERE id = c.referencia_id)
+                    WHEN 'ocorrencia' THEN (SELECT titulo FROM ocorrencias WHERE id = c.referencia_id)
+                    ELSE 'Recado da escola'
+                END
+            FROM comunicacao_whatsapp_enviados c
+            JOIN responsaveis r3 ON c.responsavel_id = r3.id
+            JOIN usuarios ur3    ON r3.usuario_id = ur3.id
+            WHERE DATE(c.enviado_em) BETWEEN ? AND ?
+
             ORDER BY criado_em DESC
-        ', [$dataInicio, $dataFim, $dataInicio, $dataFim]);
+        ", [$dataInicio, $dataFim, $dataInicio, $dataFim, $dataInicio, $dataFim]);
 
-        $historico = array_map(function ($row) {
-            $arr = (array) $row;
-            $arr['avaliacao'] = trim(($row->nome_disciplina ?? '') . ' - ' . ($row->avaliacao_descricao ?? ''), ' -');
-            unset($arr['nome_disciplina'], $arr['avaliacao_descricao']);
-
-            return $arr;
-        }, $rows);
-
-        return response()->json(['success' => true, 'count' => count($historico), 'data' => $historico]);
+        return array_map(fn ($row) => (array) $row, $rows);
     }
 }
