@@ -438,6 +438,42 @@ intervalo) e, pra transferência de arquivos, preferir um único `tar.gz` via
 `scp` + extração remota (com verificação de tamanho do arquivo antes de
 seguir) em vez de `scp -r`/`rsync` de muitos arquivos pequenos.
 
+### Landing dos pais — `pais.portalmasterschool.com.br` (desde 2026-10-22)
+
+Página pública onde pais pedem o MasterSchool na escola dos filhos. Não é
+tenant: os pedidos vão para o **banco comercial** (`ande2326_comercial`,
+conexão `comercial` em `config/database.php`), que o `ResolveTenantDatabase`
+nunca troca.
+
+```
+pais.portalmasterschool.com.br ─► ~/pais-front/          (index.html, img/, .htaccess)
+                                  └─ backend ─► ~/laravel-homolog/public
+```
+
+- **Backend na homologação de propósito**: a produção estava no código de
+  2026-10-03 e não dava pra publicar a `main` só pela landing. Quando a
+  produção estiver em dia, é só trocar o symlink
+  (`ln -sfn /home2/ande2326/laravel-deploy/public ~/pais-front/backend`) e
+  copiar as variáveis abaixo pro `.env` de lá.
+- O `.htaccess` (versionado em `landing-pais/`) só repassa `/api/interesse-pais*`
+  pro Laravel; o resto de `/api/*` dá 404. `/backend/*` direto continua
+  alcançável (o `.htaccess` do Laravel assume dentro do symlink), igual aos
+  fronts das escolas.
+- **Atualizar a landing**: o `deploy.yml` não publica `landing-pais/` (fica
+  excluída do pacote). Manual: `git archive --format=tar.gz -o pais.tar.gz
+  develop:landing-pais` → `scp` → `tar -xzf pais.tar.gz -C ~/pais-front`.
+- **Migration**: fora da pasta padrão, nunca roda com o `migrate` das escolas:
+  `php artisan migrate --database=comercial --path=database/migrations/comercial`.
+- **`.env`**: `DB_COMERCIAL_DATABASE`, `INTERESSE_PAIS_NOTIFICAR` (quem recebe
+  o aviso de cada pedido), `INTERESSE_PAIS_TOKEN` (senha do CSV) e `MAIL_*`.
+  O SMTP é a conta `naoresponda@portalmasterschool.com.br` (criada pra isso,
+  `br48.hostgator.com.br:465`, smtps); antes a homologação estava com
+  `MAIL_MAILER=log`.
+- **Usar os dados**: `php artisan interesse:resumo [nome da escola]` e
+  `https://pais.portalmasterschool.com.br/api/interesse-pais/exportar?token=...&escola=...`
+  (CSV pro Excel). A escola é texto livre e agrupa pelo slug (acento e
+  maiúscula não importam). O link `?escola=<nome>` já preenche o campo.
+
 ## Achados de portabilidade (schema mais estrito localmente que em produção)
 
 Vários módulos migrados encontraram diferença de comportamento entre o
