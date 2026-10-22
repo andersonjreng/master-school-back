@@ -3,10 +3,6 @@ RewriteEngine On
 # pais.portalmasterschool.com.br — landing estática + API do Laravel pelo
 # symlink 'backend' (mesmo esquema do teste-front, ver AMBIENTES.md).
 
-# Ninguém acessa o symlink direto pela URL (só pelo rewrite abaixo).
-RewriteCond %{THE_REQUEST} \s/backend [NC]
-RewriteRule ^ - [R=404,L]
-
 # Só GET normaliza barra final (301 em POST vira GET e perde o body).
 RewriteCond %{REQUEST_METHOD} =GET
 RewriteCond %{REQUEST_URI} ^/api/(.+)/$
