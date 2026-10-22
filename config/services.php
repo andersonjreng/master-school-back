@@ -28,6 +28,12 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // Landing dos pais (pais.portalmasterschool.com.br)
+    'interesse_pais' => [
+        'notificar' => env('INTERESSE_PAIS_NOTIFICAR'),   // e-mail que recebe cada pedido
+        'token'     => env('INTERESSE_PAIS_TOKEN'),       // senha da exportação CSV
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

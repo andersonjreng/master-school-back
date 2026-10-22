@@ -64,6 +64,26 @@ return [
             ]) : [],
         ],
 
+        // Banco comercial, fora do multi-tenant: pedidos dos pais da landing
+        // (pais.portalmasterschool.com.br) e outros dados que não são de
+        // nenhuma escola. ResolveTenantDatabase só troca a conexão 'mysql',
+        // então esta nunca muda de banco. Migrations em database/migrations/comercial.
+        'comercial' => [
+            'driver' => 'mysql',
+            'host' => env('DB_COMERCIAL_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('DB_COMERCIAL_PORT', env('DB_PORT', '3306')),
+            'database' => env('DB_COMERCIAL_DATABASE', 'master_school_comercial'),
+            'username' => env('DB_COMERCIAL_USERNAME', env('DB_USERNAME', 'root')),
+            'password' => env('DB_COMERCIAL_PASSWORD', env('DB_PASSWORD', '')),
+            'unix_socket' => env('DB_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+        ],
+
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),
