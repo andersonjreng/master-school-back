@@ -71,7 +71,7 @@ class DocumentoController extends Controller
         return response()->json([
             'success'      => true,
             'aluno'        => $alunoArr,
-            'escola'       => $this->escolaConfig->obter(),
+            'escola'       => $this->escolaConfig->paraDocumento(),
             'data_emissao' => now()->format('Y-m-d'),
         ]);
     }
@@ -133,7 +133,7 @@ class DocumentoController extends Controller
             'ano'          => $ano,
             'pagamentos'   => $pagamentos,
             'total_pago'   => round($total, 2),
-            'escola'       => $this->escolaConfig->obter(),
+            'escola'       => $this->escolaConfig->paraDocumento(),
             'data_emissao' => now()->format('Y-m-d'),
         ]);
     }
@@ -193,7 +193,7 @@ class DocumentoController extends Controller
             'success'      => true,
             'aluno'        => $aluno,
             'historico'    => $historico,
-            'escola'       => $this->escolaConfig->obter(),
+            'escola'       => $this->escolaConfig->paraDocumento(),
             'data_emissao' => now()->format('Y-m-d'),
         ]);
     }
@@ -333,7 +333,7 @@ class DocumentoController extends Controller
                 'faltas'     => $faltas,
                 'percentual' => $percentual,
             ],
-            'escola'       => $this->escolaConfig->obter(),
+            'escola'       => $this->escolaConfig->paraDocumento(),
             'data_emissao' => now()->format('Y-m-d'),
         ]);
     }
@@ -382,7 +382,7 @@ class DocumentoController extends Controller
             'success'      => true,
             'aluno'        => $aluno,
             'responsaveis' => $responsaveis,
-            'escola'       => $this->escolaConfig->obter(),
+            'escola'       => $this->escolaConfig->paraDocumento(),
             'data_emissao' => now()->format('Y-m-d'),
         ]);
     }

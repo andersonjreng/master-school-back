@@ -49,6 +49,21 @@ class EscolaConfigService
     }
 
     /**
+     * Mesmo que obter(), com logo_url já como URL absoluta — para documentos
+     * impressos, que abrem numa janela própria e não conhecem o storage.
+     */
+    public function paraDocumento(): array
+    {
+        $c = $this->obter();
+        $logo = (string) ($c['logo_url'] ?? '');
+        if ($logo !== '' && !str_starts_with($logo, 'http')) {
+            $c['logo_url'] = url('storage/' . ltrim($logo, '/'));
+        }
+
+        return $c;
+    }
+
+    /**
      * Salva só as chaves editáveis presentes em $dados (upsert por chave,
      * igual ao legado). Chaves ausentes do array não são tocadas.
      */

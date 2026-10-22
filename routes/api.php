@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ContratoFinanceiroController;
 use App\Http\Controllers\Api\ConvenioCobrancaController;
 use App\Http\Controllers\Api\DescontoPadraoController;
 use App\Http\Controllers\Api\DocumentoController;
+use App\Http\Controllers\Api\DocumentoEscolarController;
 use App\Http\Controllers\Api\EscolaConfigController;
 use App\Http\Controllers\Api\FinanceiroController;
 use App\Http\Controllers\Api\FinanceiroParametrosController;
@@ -67,6 +68,21 @@ Route::prefix('documentos')->middleware('max.jwt')->group(function () {
     Route::get('/historico-escolar', [DocumentoController::class, 'historicoEscolar']);
     Route::get('/ficha-aluno', [DocumentoController::class, 'fichaAluno']);
     Route::get('/ficha-inscricao', [DocumentoController::class, 'fichaInscricao']);
+
+    Route::get('/declaracao-frequencia', [DocumentoEscolarController::class, 'declaracaoFrequencia']);
+    Route::get('/declaracao-quitacao', [DocumentoEscolarController::class, 'declaracaoQuitacao']);
+    Route::get('/nada-consta', [DocumentoEscolarController::class, 'nadaConsta']);
+    Route::get('/declaracao-transferencia', [DocumentoEscolarController::class, 'declaracaoTransferencia']);
+    Route::get('/declaracao-escolaridade', [DocumentoEscolarController::class, 'declaracaoEscolaridade']);
+    Route::get('/relatorio-ocorrencias', [DocumentoEscolarController::class, 'relatorioOcorrencias']);
+    Route::get('/carteirinha', [DocumentoEscolarController::class, 'carteirinha']);
+
+    // Documentos da turma e atestado de vaga: só a secretaria.
+    Route::middleware('max.role:Administrador,Diretoria')->group(function () {
+        Route::get('/ata-resultados', [DocumentoEscolarController::class, 'ataResultados']);
+        Route::get('/lista-alunos', [DocumentoEscolarController::class, 'listaAlunos']);
+        Route::get('/atestado-vaga', [DocumentoEscolarController::class, 'atestadoVaga']);
+    });
 });
 
 // Equivalente a api/frequencia/*.php do backend legado.
