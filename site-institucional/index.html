@@ -83,7 +83,9 @@ button{font:inherit;cursor:pointer}
 h1,h2,h3{font-family:var(--font-d);letter-spacing:-.035em;line-height:1.04}
 .hero h1{font-size:clamp(2.3rem,4.4vw,3.9rem);font-weight:800}
 .hero h1 .line{display:block}
-.rot{position:relative;display:inline-block;color:transparent;background:linear-gradient(92deg,var(--cyan),var(--lime));-webkit-background-clip:text;background-clip:text}
+/* Linha própria e sem quebra: a altura do título não muda quando a palavra troca.
+   --rot-fs é calculado no JS para a palavra mais longa caber na largura. */
+.rot{position:relative;display:block;width:max-content;white-space:nowrap;font-size:var(--rot-fs,1em);min-height:1.04em;color:transparent;background:linear-gradient(92deg,var(--cyan),var(--lime));-webkit-background-clip:text;background-clip:text}
 .rot::after{content:"";display:inline-block;width:.07em;height:.9em;margin-left:.06em;vertical-align:-.08em;background:var(--lime);animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
 .strike{position:relative;color:rgba(233,241,255,.55)}
@@ -1006,6 +1008,21 @@ async function digita(){
   }
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Fonte da linha da palavra: a mais longa da lista cabe na largura do título (sem quebrar).
+function ajustaRot(){
+  const h1 = rot.closest("h1"), medida = rot.cloneNode(false);
+  medida.removeAttribute("id");
+  medida.style.cssText = "position:absolute;visibility:hidden;font-size:1em";
+  h1.append(medida);
+  let maior = 0;
+  for (const p of palavras) { medida.textContent = p; maior = Math.max(maior, medida.getBoundingClientRect().width); }
+  medida.remove();
+  const escala = Math.min(1, (h1.clientWidth - 4) / maior);
+  rot.style.setProperty("--rot-fs", escala.toFixed(3) + "em");
+}
+ajustaRot();
+addEventListener("resize", ajustaRot);
+document.fonts?.ready.then(ajustaRot);
 digita();
 
 /* ---------- Palco 3D segue o mouse ---------- */
