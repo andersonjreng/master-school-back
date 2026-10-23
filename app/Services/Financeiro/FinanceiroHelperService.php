@@ -101,7 +101,7 @@ class FinanceiroHelperService
             : ['multa_valor' => 0.0, 'juros_valor' => 0.0];
         $breakdown = $this->distribuirValorPago($valorPago, (float) $parcela->valor_final, $encargos['multa_valor'], $encargos['juros_valor']);
 
-        return DB::transaction(function () use (
+        $resultado = DB::transaction(function () use (
             $parcelaId, $boletoId, $retornoId, $valorPago, $breakdown, $dataPagamento,
             $formaPagamento, $observacoes, $usuarioId, $alunoId,
         ) {
@@ -138,9 +138,11 @@ class FinanceiroHelperService
                 ->where('p.id', $parcelaId)
                 ->first(['pp.nome as plano_nome', 'p.numero_parcela', 'pp.numero_parcelas', 'mf.ano_letivo']);
 
-            $descricaoRecibo = $descRow
-                ? "Parcela {$descRow->numero_parcela}/{$descRow->numero_parcelas} — {$descRow->plano_nome} ({$descRow->ano_letivo})"
-                : "Parcela #{$parcelaId}";
+            // Parcela nº 0 = taxa de matrícula cobrada na rematrícula online.
+            $descricaoRecibo = !$descRow ? "Parcela #{$parcelaId}"
+                : ((int) $descRow->numero_parcela === 0
+                    ? "Taxa de matrícula — {$descRow->plano_nome} ({$descRow->ano_letivo})"
+                    : "Parcela {$descRow->numero_parcela}/{$descRow->numero_parcelas} — {$descRow->plano_nome} ({$descRow->ano_letivo})");
 
             $formaLabel = str_replace(
                 ['cartao_debito', 'cartao_credito'],
@@ -178,6 +180,11 @@ class FinanceiroHelperService
 
             return ['baixa_id' => $baixaId, 'recibo_id' => $reciboId, 'numero_recibo' => $numeroRecibo];
         });
+
+        // Parcela cobrada na rematrícula online: pagou, a rematrícula está confirmada.
+        app(\App\Services\Rematricula\RematriculaService::class)->parcelaPaga($parcelaId);
+
+        return $resultado;
     }
 
     /**

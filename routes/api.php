@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\ReciboController;
 use App\Http\Controllers\Api\RegistroAulaController;
 use App\Http\Controllers\Api\ResponsavelController;
 use App\Http\Controllers\Api\TurmaController;
+use App\Http\Controllers\Api\RematriculaController;
 use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\VinculoProfessorTurmaDisciplinaController;
 use Illuminate\Support\Facades\Route;
@@ -458,6 +459,38 @@ Route::prefix('parametrizacoes')->middleware('max.jwt')->group(function () {
 });
 
 // Equivalente a api/escola/*.php.
+// Rematrícula online: a família aceita o contrato do ano novo e paga pelo app.
+Route::prefix('rematricula')->middleware('max.jwt')->group(function () {
+    Route::middleware('max.role:Responsável')->group(function () {
+        Route::get('/minha', [RematriculaController::class, 'minha']);
+        Route::get('/minha/{alunoId}/contrato', [RematriculaController::class, 'contratoFamilia'])->whereNumber('alunoId');
+        Route::post('/minha/{alunoId}/aceitar', [RematriculaController::class, 'aceitar'])->whereNumber('alunoId');
+        Route::post('/minha/{alunoId}/recusar', [RematriculaController::class, 'recusar'])->whereNumber('alunoId');
+        Route::delete('/minha/{alunoId}/recusar', [RematriculaController::class, 'desfazerRecusa'])->whereNumber('alunoId');
+        Route::get('/minha/contratos/{id}', [RematriculaController::class, 'meuContrato'])->whereNumber('id');
+    });
+
+    // A virada de ano (turmas.gerenciar) também consulta quem rematriculou.
+    Route::get('/situacao-virada', [RematriculaController::class, 'situacaoVirada'])->middleware('max.pode:turmas.gerenciar,rematricula.gerenciar');
+
+    Route::middleware('max.pode:rematricula.gerenciar')->group(function () {
+        Route::get('/campanhas', [RematriculaController::class, 'campanhas']);
+        Route::get('/campanhas/nova', [RematriculaController::class, 'nova']);
+        Route::get('/campanhas/{id}', [RematriculaController::class, 'campanha'])->whereNumber('id');
+        Route::post('/campanhas', [RematriculaController::class, 'salvar']);
+        Route::put('/campanhas/{id}', [RematriculaController::class, 'salvar'])->whereNumber('id');
+        Route::delete('/campanhas/{id}', [RematriculaController::class, 'excluir'])->whereNumber('id');
+        Route::post('/campanhas/{id}/status', [RematriculaController::class, 'status'])->whereNumber('id');
+        Route::get('/campanhas/{id}/painel', [RematriculaController::class, 'painel'])->whereNumber('id');
+        Route::post('/campanhas/{id}/lembrar', [RematriculaController::class, 'lembrar'])->whereNumber('id');
+        Route::get('/turmas', [RematriculaController::class, 'turmas']);
+        Route::get('/modelo-contrato', [RematriculaController::class, 'modelo']);
+        Route::post('/previa-contrato', [RematriculaController::class, 'previa']);
+        Route::post('/{id}/cancelar', [RematriculaController::class, 'cancelar'])->whereNumber('id');
+        Route::get('/{id}/contrato', [RematriculaController::class, 'contratoEscola'])->whereNumber('id');
+    });
+});
+
 Route::prefix('escola')->middleware('max.jwt')->group(function () {
     Route::get('/configuracoes', [EscolaConfigController::class, 'index']);
     Route::post('/configuracoes', [EscolaConfigController::class, 'update']);

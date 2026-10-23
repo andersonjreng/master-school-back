@@ -22,6 +22,7 @@ final class Permissoes
     public const PESSOAS_GERENCIAR = 'pessoas.gerenciar';
     public const EQUIPE_GERENCIAR = 'equipe.gerenciar';
     public const TURMAS_GERENCIAR = 'turmas.gerenciar';
+    public const REMATRICULA_GERENCIAR = 'rematricula.gerenciar';
     public const DOCUMENTOS_EMITIR = 'documentos.emitir';
     public const PEDAGOGICO_VER = 'pedagogico.ver';
     public const PEDAGOGICO_EDITAR = 'pedagogico.editar';
@@ -51,6 +52,8 @@ final class Permissoes
             'Cadastrar, editar, inativar e vincular alunos e responsáveis; liberar o acesso do aluno ao portal.'],
         self::TURMAS_GERENCIAR => ['secretaria', 'Turmas e disciplinas',
             'Criar e editar turmas, enturmar, transferir e promover alunos, vincular professores às disciplinas.'],
+        self::REMATRICULA_GERENCIAR => ['secretaria', 'Rematrícula online',
+            'Abrir a rematrícula do ano novo, editar o contrato e acompanhar quem confirmou, quem falta e quem não vai renovar.'],
         self::DOCUMENTOS_EMITIR => ['secretaria', 'Emitir documentos',
             'Declarações, históricos, atas, listas, carteirinhas e atestados de qualquer aluno.'],
         self::EQUIPE_GERENCIAR => ['secretaria', 'Equipe e usuários',
@@ -108,7 +111,7 @@ final class Permissoes
                 self::CALENDARIO_EDITAR, self::COMUNICACAO_GESTAO,
             ],
             Papeis::SECRETARIA => [
-                self::PAINEL_DIRECAO, self::PESSOAS_GERENCIAR, self::TURMAS_GERENCIAR,
+                self::PAINEL_DIRECAO, self::PESSOAS_GERENCIAR, self::TURMAS_GERENCIAR, self::REMATRICULA_GERENCIAR,
                 self::DOCUMENTOS_EMITIR, self::PEDAGOGICO_VER, self::COMUNICACAO_GESTAO,
             ],
             Papeis::TESOURARIA => [
