@@ -53,6 +53,7 @@ class ManualService
             . "e os passos de forma curta e numerada. Nunca diga que algo não existe ou não é possível sem consultar o manual.\n"
             . "Se o manual disser que a função existe mas o perfil do usuário não tem acesso, explique isso usando o texto de 'como_liberar'\n"
             . "(com o nome exato da permissão). Não acrescente passos ou recursos que o manual não citou.\n"
+            . "Se o item vier com 'video_tutorial', termine oferecendo o vídeo com o link em markdown (ex.: [Ver o vídeo](url)).\n"
             . "Se o manual realmente não tiver o assunto, diga que não encontrou e sugira falar com a secretaria.\n\n"
             . "O QUE ESTE USUÁRIO PODE USAR (título — onde fica):\n" . implode("\n", $indice)
             . ($outros ? "\n\nEXISTE NO SISTEMA, MAS ESTE PERFIL NÃO TEM ACESSO: " . implode('; ', $outros) . '.' : '');
@@ -106,7 +107,7 @@ class ManualService
         $resultado = [
             'encontrado' => array_map(fn ($i) => [
                 'titulo' => $i['titulo'], 'onde_fica' => $i['menu'], 'como_fazer' => $i['passos'],
-            ], $achados),
+            ] + (($v = VideosTutoriais::doItem($i['id'])) ? ['video_tutorial' => $v] : []), $achados),
         ];
         // Só menciona o que está fora do perfil quando combina tão bem quanto (ou melhor que) o achado.
         $relevantes = array_filter($bloqueados, fn ($i) => $i['_pontos'] >= max(3, $melhor));
