@@ -57,6 +57,10 @@ class LimparLogsSistema extends Command
 
                 $apagados = $this->apagarEmLotes($geral) + ($nav ? $this->apagarEmLotes($nav) : 0);
                 $this->info("[$dbname] Apagados: $apagados registro(s).");
+
+                // Aproveita a rotina semanal: notificações do sino já velhas.
+                $notif = app(\App\Services\Notificacoes\NotificacaoService::class)->limparAntigas();
+                $this->info("[$dbname] Notificações antigas apagadas: $notif.");
             } catch (\Throwable $e) {
                 $this->error("[$dbname] Erro: {$e->getMessage()}");
             }

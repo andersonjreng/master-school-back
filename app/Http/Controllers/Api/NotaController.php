@@ -435,6 +435,7 @@ class NotaController extends Controller
 
         $inseridos = 0;
         $ignorados = 0;
+        $alunosComNota = [];
 
         foreach ($alunosNotas as $item) {
             $alunoId = (int) $item['aluno_id'];
@@ -450,7 +451,11 @@ class NotaController extends Controller
                 'segunda_chamada'  => !empty($item['segunda_chamada']) ? 1 : 0,
             ]);
             $inseridos++;
+            $alunosComNota[] = $alunoId;
         }
+
+        // Sino da família: "Nota de Matemática: 8,5 de 10".
+        app(\App\Services\Notificacoes\NotificacaoService::class)->notasLancadas($avaliacaoId, $alunosComNota);
 
         $this->log->registrar(
             $request, $usuarioId, $username, 'LANCAMENTO_NOTA', '/api/notas/lote', 'POST',
@@ -526,6 +531,8 @@ class NotaController extends Controller
                 'segunda_chamada'  => $segundaChamada ?? 0,
             ]);
         }
+
+        app(\App\Services\Notificacoes\NotificacaoService::class)->notasLancadas((int) $avaliacaoId, [(int) $alunoId]);
 
         $this->log->registrar(
             $request, $usuarioId, $username, 'ATUALIZACAO_NOTA', '/api/notas', 'PUT',

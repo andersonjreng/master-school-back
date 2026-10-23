@@ -18,7 +18,9 @@ use Illuminate\Support\Facades\DB;
  * Áreas: mural (posts e reações), leituras (lidos/ciência do mural, só
  * interessa a quem vê as estatísticas), ocorrencias, recados (mensagens e
  * encerramento) e vistos (até onde cada lado leu uma conversa — muda só
- * quando a leitura avança, para dois clientes não ficarem se acordando).
+ * quando a leitura avança, para dois clientes não ficarem se acordando)
+ * e notificacoes (nota/avaliação/falta/boleto novos ou atualizados — a
+ * assinatura é da escola toda; o front então recarrega só o resumo).
  */
 class PulsoComunicacao
 {
@@ -26,6 +28,9 @@ class PulsoComunicacao
 
     /** @var array<string, array{em: float, v: array<string, string>}> por banco */
     private static array $memo = [];
+
+    /** @var array<string, bool> por banco: escola sem a migration de notificações ainda */
+    private static array $temNotificacoes = [];
 
     /** @return array<string, string> */
     public function versoes(): array
@@ -47,12 +52,18 @@ class PulsoComunicacao
               (SELECT CONCAT_WS('.', COUNT(*), SUM(ultima_lida_id)) FROM recados_leituras) AS vistos
         ");
 
+        $temNotif = self::$temNotificacoes[$banco] ??= \Illuminate\Support\Facades\Schema::hasTable('notificacoes');
+        $notif = $temNotif
+            ? (string) DB::selectOne("SELECT CONCAT_WS('.', COUNT(*), MAX(id), UNIX_TIMESTAMP(MAX(atualizado_em))) AS s FROM notificacoes")->s
+            : '';
+
         $v = [
             'mural' => $this->curta($linha->posts . '|' . $linha->reacoes),
             'leituras' => $this->curta((string) $linha->leituras),
             'ocorrencias' => $this->curta((string) $linha->ocorrencias),
             'recados' => $this->curta($linha->mensagens . '|' . $linha->conversas),
             'vistos' => $this->curta((string) $linha->vistos),
+            'notificacoes' => $this->curta($notif),
         ];
         self::$memo[$banco] = ['em' => microtime(true), 'v' => $v];
         return $v;

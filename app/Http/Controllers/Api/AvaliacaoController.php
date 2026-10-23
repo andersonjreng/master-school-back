@@ -278,6 +278,8 @@ class AvaliacaoController extends Controller
             'data_cadastro'      => now(),
         ]);
 
+        app(\App\Services\Notificacoes\NotificacaoService::class)->avaliacaoMarcada((int) $novoId);
+
         $this->log->registrar(
             $request, $usuarioId, $username, 'CRIACAO_AVALIACAO', '/api/avaliacoes', 'POST',
             "Avaliação #$novoId criada" . ($descricao !== '' ? ": \"$descricao\"" : '') . " (turma #$turmaId, disciplina #$disciplinaId)",
@@ -408,6 +410,8 @@ class AvaliacaoController extends Controller
             'valor_maximo'       => $valorMaximo,
         ]);
 
+        app(\App\Services\Notificacoes\NotificacaoService::class)->avaliacaoMarcada((int) $avaliacaoId);
+
         $this->log->registrar(
             $request, $usuarioId, $username, 'ATUALIZACAO_AVALIACAO', '/api/avaliacoes', 'PUT',
             "Avaliação #$avaliacaoId atualizada" . ($descricao !== '' ? ": \"$descricao\"" : ''),
@@ -459,6 +463,7 @@ class AvaliacaoController extends Controller
         }
 
         DB::table('avaliacoes')->where('id', $avaliacaoId)->delete();
+        app(\App\Services\Notificacoes\NotificacaoService::class)->avaliacaoRemovida($avaliacaoId);
 
         $this->log->registrar(
             $request, $usuarioId, $username, 'EXCLUSAO_AVALIACAO', '/api/avaliacoes', 'DELETE',

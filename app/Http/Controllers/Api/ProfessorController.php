@@ -578,6 +578,8 @@ class ProfessorController extends Controller
             }
         });
 
+        app(\App\Services\Notificacoes\NotificacaoService::class)->frequenciaLancada((string) $dataFrequencia, $alunosFrequencia);
+
         $totalAlunos = count($alunosFrequencia);
 
         $this->log->registrar(
@@ -644,6 +646,8 @@ class ProfessorController extends Controller
         if ($removidos === 0) {
             return response()->json(['error' => 'Nenhuma frequência lançada para esta turma nesta data.'], 404);
         }
+        app(\App\Services\Notificacoes\NotificacaoService::class)->chamadaExcluida(
+            (string) $data, DB::table('turma_aluno')->where('turma_id', $turmaId)->pluck('aluno_id')->all());
 
         $this->log->registrar(
             $request, $usuarioId, $username, 'EXCLUSAO_FREQUENCIA', '/api/professores/frequencia', 'DELETE',

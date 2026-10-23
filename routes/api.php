@@ -361,6 +361,8 @@ Route::prefix('bncc')->middleware('max.jwt')->group(function () {
 Route::prefix('comunicacao')->middleware('max.jwt')->group(function () {
     Route::get('/resumo', [\App\Http\Controllers\Api\ComunicacaoController::class, 'resumo']);
     Route::get('/pulso', [\App\Http\Controllers\Api\ComunicacaoController::class, 'pulso']);
+    Route::post('/notificacoes/lidas', [\App\Http\Controllers\Api\ComunicacaoController::class, 'notificacoesLidas']);
+    Route::post('/notificacoes/{id}/lida', [\App\Http\Controllers\Api\ComunicacaoController::class, 'notificacaoLida'])->whereNumber('id');
 
     Route::get('/mural', [\App\Http\Controllers\Api\ComunicacaoController::class, 'mural']);
     Route::get('/mural/opcoes', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralOpcoes']);
