@@ -474,6 +474,27 @@ pais.portalmasterschool.com.br ─► ~/pais-front/          (index.html, img/, 
   (CSV pro Excel). A escola é texto livre e agrupa pelo slug (acento e
   maiúscula não importam). O link `?escola=<nome>` já preenche o campo.
 
+### Site institucional — `portalmasterschool.com.br/` (desde 2026-10-23)
+
+- Página única estática, versionada em `site-institucional/` (excluída do
+  pacote do `deploy.yml`). No servidor: só `index.html` e `site-assets/` na
+  raiz de `~/portalmasterschool.com.br/`. As pastas `cepelc/`, `teste/`,
+  `emilly/` e `projeto/` não são tocadas.
+- **Não criar `.htaccess` na raiz**: as regras dele valeriam também dentro
+  das subpastas (inclusive o legado do cepelc, que tem usuários reais).
+- O formulário de escolas envia para
+  `https://pais.portalmasterschool.com.br/api/contato-escola` por CORS
+  (o Laravel libera `api/*` para qualquer origem). Por isso o `.htaccess` do
+  `pais-front` também repassa `contato-escola`.
+- Dados em `contato_escolas` (banco comercial). Aviso por e-mail no mesmo
+  destinatário da landing (`CONTATO_ESCOLAS_NOTIFICAR`, cai em
+  `INTERESSE_PAIS_NOTIFICAR`). CSV:
+  `https://pais.portalmasterschool.com.br/api/contato-escola/exportar?token=...`
+  (mesmo token da landing, salvo se `CONTATO_ESCOLAS_TOKEN` existir).
+- **Atualizar**: `git archive --format=tar.gz -o site.tar.gz develop:site-institucional`
+  → `scp` → `tar -xzf site.tar.gz -C ~/portalmasterschool.com.br index.html site-assets`.
+  O site antigo ficou em `~/deploy-backups/site-raiz-20261023-110415/index.html`.
+
 ## Achados de portabilidade (schema mais estrito localmente que em produção)
 
 Vários módulos migrados encontraram diferença de comportamento entre o
