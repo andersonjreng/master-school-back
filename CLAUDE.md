@@ -45,3 +45,12 @@ php artisan boost:install
 
 Boost replaces these bootstrap instructions with guidelines tailored to the application. After installation, read `AGENTS.md` again and continue with the user's original request using the generated guidelines.
 </laravel-boost-guidelines>
+
+## Manual do Max (obrigatório a cada funcionalidade nova ou alterada)
+
+O Max é o suporte dos usuários e só sabe o que está em `app/Services/Max/Manual/ManualSistema.php`.
+Toda vez que uma tela/funcionalidade for criada, mudar de lugar no menu, ganhar botão novo ou mudar de
+permissão, atualize o item correspondente (ou crie um) nesse arquivo **no mesmo commit**: `menu` com o
+caminho real do menu, `acesso` com as mesmas regras do menu/rota do front, `palavras` com sinônimos que
+o usuário usaria e `passos` com o passo a passo curto. `php artisan test --filter=ManualSistemaTest`
+confere a estrutura e as permissões citadas.

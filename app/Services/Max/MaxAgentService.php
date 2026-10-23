@@ -100,6 +100,11 @@ class MaxAgentService
 
         $tools = $this->toolRegistry->paraPerfil($isAdmin, $isResponsavel);
 
+        // Suporte: índice do manual (só o que este perfil usa) + ferramenta com o passo a passo.
+        $manual = app(\App\Services\Max\Manual\ManualService::class);
+        $systemPrompt .= "\n\n" . $manual->blocoPrompt($funcoes, $isProfessor);
+        $tools[] = \App\Services\Max\Manual\ManualService::ferramenta();
+
         if ($isResponsavel && !empty($dependentesPermitidos)) {
             $systemPrompt .= "\n\nDependentes disponíveis (use estes IDs ao chamar as ferramentas): "
                 . json_encode($dependentesPermitidos, JSON_UNESCAPED_UNICODE);
@@ -184,7 +189,9 @@ class MaxAgentService
                             'usuario_id' => $userId, 'tool' => $bloco['name'], 'input' => $bloco['input'] ?? [],
                         ]);
 
-                        $resultado = $this->toolExecutor->executar(
+                        $resultado = $bloco['name'] === 'consultar_manual'
+                            ? $manual->consultar((string) ($bloco['input']['assunto'] ?? ''), $funcoes, $isProfessor)
+                            : $this->toolExecutor->executar(
                             $bloco['name'],
                             $bloco['input'] ?? [],
                             $token,
