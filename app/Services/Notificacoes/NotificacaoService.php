@@ -327,6 +327,22 @@ class NotificacaoService
         if (!$usuarioIds) {
             return;
         }
+
+        // Push só para quem recebe algo novo de fato: sem esta notificação ainda,
+        // ou com texto mudado e marcada para reabrir (ex.: nota corrigida).
+        $paraPush = [];
+        if ($this->vaiProPush($chave)) {
+            $atuais = DB::table('notificacoes')->where('chave', $chave)->whereIn('usuario_id', $usuarioIds)
+                ->get(['usuario_id', 'titulo', 'detalhe'])->keyBy('usuario_id');
+            foreach ($usuarioIds as $uid) {
+                $a = $atuais[$uid] ?? null;
+                $mudou = $a && ($a->titulo !== mb_substr($titulo, 0, 160) || $a->detalhe !== ($detalhe !== null ? mb_substr($detalhe, 0, 255) : null));
+                if (!$a || ($mudou && $reabrir)) {
+                    $paraPush[] = $uid;
+                }
+            }
+        }
+
         $agora = now()->toDateTimeString();
         $linhas = [];
         $valores = [];
@@ -345,6 +361,26 @@ class NotificacaoService
                 $reabre
                 atualizado_em = IF(titulo <=> VALUES(titulo) AND detalhe <=> VALUES(detalhe), atualizado_em, VALUES(atualizado_em)),
                 titulo = VALUES(titulo), detalhe = VALUES(detalhe), link = VALUES(link), link_query = VALUES(link_query)", $valores);
+
+        if ($paraPush) {
+            $url = $link ? $link . ($query ? '?' . http_build_query($query) : '') : null;
+            app(PushService::class)->avisar($paraPush, $titulo, $detalhe, $url, $chave);
+        }
+    }
+
+    /**
+     * Vira push só o que é evento (nota, avaliação, falta, boleto, plano aprovado/devolvido,
+     * rematrícula). Os resumos da equipe ("11 turmas sem chamada") são recalculados o
+     * tempo todo e ficam só no sino.
+     */
+    private function vaiProPush(string $chave): bool
+    {
+        foreach (['nota:', 'avaliacao:', 'avaliacao_amanha:', 'falta:', 'boleto:', 'plano:', 'rematricula:'] as $prefixo) {
+            if (str_starts_with($chave, $prefixo)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

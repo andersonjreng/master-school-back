@@ -162,6 +162,12 @@ class MuralService
             $id = DB::table('mural_posts')->insertGetId($campos + ['autor_usuario_id' => $p->usuarioId]);
             // Autor já "leu" o próprio post.
             DB::table('mural_leituras')->insertOrIgnore(['post_id' => $id, 'usuario_id' => $p->usuarioId]);
+            // Comunicado novo: aviso no celular de quem recebe (editar não avisa de novo).
+            $post = DB::table('mural_posts')->where('id', $id)->first();
+            app(\App\Services\Notificacoes\PushService::class)->avisar(
+                $this->destinatarios($post)->pluck('usuario_id')->all(),
+                'Comunicado: ' . $campos['titulo'], mb_substr($campos['texto'], 0, 140), '/comunicacao', "mural:$id",
+            );
         }
         return $this->buscar($id, $p);
     }

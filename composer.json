@@ -11,6 +11,7 @@
         "laravel/framework": "^13.17",
         "laravel/octane": "^2.19",
         "laravel/tinker": "^3.0",
+        "minishlink/web-push": "^11.0",
         "openboleto/openboleto": "^2.0",
         "openboleto/opencnabphp": "^2.6",
         "spiral/roadrunner-cli": "^2.7",
