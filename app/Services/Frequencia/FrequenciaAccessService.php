@@ -2,30 +2,42 @@
 
 namespace App\Services\Frequencia;
 
+use App\Support\Papeis;
+use App\Support\Permissoes;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Controle de acesso compartilhado pelos endpoints de frequência (equivalente
- * à checagem repetida em api/frequencia/*.php): Administrador/Professor têm
- * acesso amplo; Responsável só pode consultar os próprios dependentes.
+ * à checagem repetida em api/frequencia/*.php): professor e quem acompanha
+ * todas as turmas (permissão pedagogico.ver) têm acesso amplo; Responsável só
+ * pode consultar os próprios dependentes.
  */
 class FrequenciaAccessService
 {
-    public function possuiPapel(object $jwtUser, array $papeis): bool
+    /** Visões da escola toda (resumo geral/mensal). */
+    public function acompanhaTodasTurmas(object $jwtUser): bool
     {
-        return !empty(array_intersect($papeis, $this->funcoes($jwtUser)));
+        return Permissoes::pode($this->funcoes($jwtUser), Permissoes::PEDAGOGICO_VER);
+    }
+
+    public function acessoAmplo(object $jwtUser): bool
+    {
+        return Papeis::ehProfessor($this->funcoes($jwtUser)) || $this->acompanhaTodasTurmas($jwtUser);
+    }
+
+    /** Pode consultar alguma frequência (amplo ou dos próprios dependentes). */
+    public function podeConsultar(object $jwtUser): bool
+    {
+        return $this->acessoAmplo($jwtUser) || Papeis::ehResponsavel($this->funcoes($jwtUser));
     }
 
     /**
-     * True quando o usuário é Responsável e NÃO tem nenhum dos papéis de acesso
-     * amplo informados (ou seja, precisa passar pela checagem de dependente).
+     * True quando o usuário é Responsável e NÃO tem acesso amplo (ou seja,
+     * precisa passar pela checagem de dependente).
      */
-    public function responsavelSemAcessoAmplo(object $jwtUser, array $papeisAmplos = ['Administrador', 'Professor']): bool
+    public function responsavelSemAcessoAmplo(object $jwtUser): bool
     {
-        $funcoes = $this->funcoes($jwtUser);
-        $ehResponsavel = in_array('Responsável', $funcoes, true) || in_array('Responsavel', $funcoes, true);
-
-        return $ehResponsavel && empty(array_intersect($papeisAmplos, $funcoes));
+        return Papeis::ehResponsavel($this->funcoes($jwtUser)) && !$this->acessoAmplo($jwtUser);
     }
 
     public function dependenteValido(object $jwtUser, int $alunoId): bool

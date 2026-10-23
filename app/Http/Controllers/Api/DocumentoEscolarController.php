@@ -16,8 +16,8 @@ use Illuminate\Support\Facades\DB;
  * escolaridade), relatório de ocorrências, carteirinha, documentos da turma
  * (ata de resultados, listas) e o atestado de vaga.
  *
- * Por aluno: Administrador/Diretoria ou o responsável pelo aluno
- * (AcessoAlunoService). Da turma e atestado de vaga: só Administrador/Diretoria
+ * Por aluno: quem emite documentos (documentos.emitir) ou o responsável pelo aluno
+ * (AcessoAlunoService). Da turma e atestado de vaga: só documentos.emitir
  * (rota com max.role).
  */
 class DocumentoEscolarController extends Controller
@@ -134,7 +134,7 @@ class DocumentoEscolarController extends Controller
         }
         $ano = (int) $request->query('ano') ?: null;
         $funcoes = (array) ($request->attributes->get('max_user')->funcoes ?? []);
-        $somenteFamilia = !array_intersect(['Administrador', 'Diretoria'], $funcoes);
+        $somenteFamilia = !\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::DOCUMENTOS_EMITIR);
 
         return $this->resposta([
             'aluno' => $aluno,
@@ -235,7 +235,7 @@ class DocumentoEscolarController extends Controller
     {
         $funcoes = (array) ($request->attributes->get('max_user')->funcoes ?? []);
 
-        return (bool) array_intersect(['Administrador', 'Diretoria'], $funcoes);
+        return \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::DOCUMENTOS_EMITIR);
     }
 
     private function data(mixed $v): ?string

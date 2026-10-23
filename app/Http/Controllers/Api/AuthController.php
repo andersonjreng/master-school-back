@@ -4,18 +4,20 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Sistema\LogSistemaService;
+use App\Services\Sistema\PermissaoService;
 use Firebase\JWT\JWT;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Equivalente a api/auth/login.php.
  */
 class AuthController extends Controller
 {
-    public function __construct(private LogSistemaService $log)
+    public function __construct(private LogSistemaService $log, private PermissaoService $permissoes)
     {
     }
 
@@ -28,10 +30,13 @@ class AuthController extends Controller
             return response()->json(['error' => 'Email e senha são obrigatórios'], 400);
         }
 
-        $user = DB::table('usuarios')->where('email', $email)->where('ativo', 1)
-            ->first(['id', 'nome_completo', 'email', 'senha']);
+        $colunas = ['id', 'nome_completo', 'email', 'senha'];
+        if (Schema::hasColumn('usuarios', 'acesso_portal')) {
+            $colunas[] = 'acesso_portal';
+        }
+        $user = DB::table('usuarios')->where('email', $email)->where('ativo', 1)->first($colunas);
 
-        if (!$user || !Hash::check($senha, $user->senha)) {
+        if (!$user || !$user->senha || !Hash::check($senha, $user->senha)) {
             $this->log->registrar(
                 $request, $user->id ?? null, $email, 'LOGIN_FALHA',
                 '/api/auth/login', 'POST', "Tentativa de login falhou para: $email", 401,
@@ -39,6 +44,17 @@ class AuthController extends Controller
             );
 
             return response()->json(['error' => 'Credenciais inválidas'], 401);
+        }
+
+        // Aluno cadastrado sem acesso ao portal (a secretaria libera na ficha).
+        if (isset($user->acesso_portal) && !$user->acesso_portal) {
+            $this->log->registrar(
+                $request, $user->id, $email, 'LOGIN_FALHA',
+                '/api/auth/login', 'POST', "Login bloqueado (sem acesso ao portal): $email", 403,
+                ['email' => $email, 'motivo' => 'sem_acesso_portal']
+            );
+
+            return response()->json(['error' => 'Este usuário não tem acesso ao portal. Procure a secretaria da escola.'], 403);
         }
 
         $roles = DB::table('usuario_funcao as uf')
@@ -76,6 +92,19 @@ class AuthController extends Controller
             'id' => $user->id,
             'username' => $user->nome_completo,
             'roles' => $roles,
+            'permissoes' => $this->permissoes->efetivas($roles),
         ]);
+    }
+
+    /**
+     * Permissões atuais de quem está logado. O front chama ao abrir o app,
+     * então exceções novas valem sem precisar logar de novo.
+     */
+    public function permissoes(Request $request): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
+
+        return response()->json(['roles' => $funcoes, 'permissoes' => $this->permissoes->efetivas($funcoes)]);
     }
 }

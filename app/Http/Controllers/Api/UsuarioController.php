@@ -23,15 +23,15 @@ class UsuarioController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Requer função de Administração.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::EQUIPE_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não gerencia a equipe e os usuários.'], 403);
         }
 
         $rows = DB::table('usuarios as u')
             ->leftJoin('usuario_funcao as uf', 'u.id', '=', 'uf.usuario_id')
             ->leftJoin('funcoes as f', 'uf.funcao_id', '=', 'f.id')
             ->orderBy('u.id')->orderBy('f.nome_funcao')
-            ->get(['u.id', 'u.nome_completo', 'u.email', 'u.telefone', 'u.data_cadastro', 'u.ativo', 'u.ultimo_login', 'f.nome_funcao']);
+            ->get(['u.id', 'u.nome_completo', 'u.email', 'u.telefone', 'u.data_cadastro', 'u.ativo', 'u.acesso_portal', 'u.ultimo_login', 'f.nome_funcao']);
 
         $users = [];
         foreach ($rows as $row) {
@@ -43,6 +43,7 @@ class UsuarioController extends Controller
                     'telefone' => $row->telefone,
                     'data_cadastro' => $row->data_cadastro,
                     'ativo' => (bool) $row->ativo,
+                    'acesso_portal' => (bool) $row->acesso_portal,
                     'ultimo_login' => $row->ultimo_login,
                     'funcoes' => [],
                 ];
@@ -59,8 +60,8 @@ class UsuarioController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Requer função de Administração.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::EQUIPE_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não gerencia a equipe e os usuários.'], 403);
         }
 
         $nomeCompleto = $request->input('nome_completo');
@@ -112,8 +113,8 @@ class UsuarioController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Requer função de Administração.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::EQUIPE_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não gerencia a equipe e os usuários.'], 403);
         }
 
         $usuarioId = $request->input('usuario_id');
@@ -183,8 +184,8 @@ class UsuarioController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem alterar o status de um usuário.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::EQUIPE_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não gerencia a equipe e os usuários.'], 403);
         }
 
         $usuarioId = $request->input('usuario_id');
@@ -217,8 +218,24 @@ class UsuarioController extends Controller
     }
 
     /**
-     * A Diretoria gerencia usuários, mas não mexe em quem é Administrador nem
-     * concede/retira esse papel — só um Administrador pode.
+     * Perfis que podem ser atribuídos (tela de usuários / equipe), com o que
+     * cada um acessa — o front monta os seletores a partir daqui.
+     */
+    public function perfis(Request $request): JsonResponse
+    {
+        $permissoes = app(\App\Services\Sistema\PermissaoService::class);
+
+        return response()->json(DB::table('funcoes')->orderBy('id')->get(['id', 'nome_funcao', 'descricao'])
+            ->map(fn ($f) => [
+                'id' => (int) $f->id, 'nome' => $f->nome_funcao, 'descricao' => $f->descricao,
+                'permissoes' => $permissoes->doPerfil($f->nome_funcao),
+            ]));
+    }
+
+    /**
+     * Quem gerencia a equipe sem ser Administrador não mexe em um usuário
+     * Administrador e não concede um perfil com mais acesso do que o próprio
+     * (senão a Secretaria, por exemplo, poderia se dar o perfil Diretoria).
      */
     private function checarPapelAdministrador(array $funcoesQuemFaz, ?int $alvoId, ?array $novasFuncoesIds): ?string
     {
@@ -230,8 +247,26 @@ class UsuarioController extends Controller
         if ($alvoEhAdmin) {
             return 'Somente um Administrador pode alterar um usuário Administrador.';
         }
-        if ($novasFuncoesIds !== null && in_array($adminId, array_map('intval', $novasFuncoesIds), true)) {
+        if ($novasFuncoesIds === null) {
+            return null;
+        }
+        $novos = array_map('intval', $novasFuncoesIds);
+        if (in_array($adminId, $novos, true)) {
             return 'Somente um Administrador pode conceder o papel Administrador.';
+        }
+
+        // Só os perfis que a pessoa ainda não tinha.
+        $atuais = $alvoId ? DB::table('usuario_funcao')->where('usuario_id', $alvoId)->pluck('funcao_id')->map(fn ($id) => (int) $id)->all() : [];
+        $acrescentados = array_diff($novos, $atuais);
+        if (!$acrescentados) {
+            return null;
+        }
+        $permissoes = app(\App\Services\Sistema\PermissaoService::class);
+        $minhas = $permissoes->efetivas($funcoesQuemFaz);
+        foreach (DB::table('funcoes')->whereIn('id', $acrescentados)->pluck('nome_funcao') as $perfil) {
+            if (array_diff($permissoes->doPerfil($perfil), $minhas)) {
+                return "Você não pode conceder o perfil $perfil: ele tem acessos que o seu perfil não tem.";
+            }
         }
         return null;
     }

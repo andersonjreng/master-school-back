@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AuditarRequisicao;
+use App\Http\Middleware\RequirePermission;
 use App\Http\Middleware\RequireRole;
 use App\Http\Middleware\ResolveTenantDatabase;
 use App\Http\Middleware\VerifyLegacyJwt;
@@ -28,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'max.jwt'  => VerifyLegacyJwt::class,
             'max.role' => RequireRole::class,
+            'max.pode' => RequirePermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

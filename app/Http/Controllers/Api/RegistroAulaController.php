@@ -22,7 +22,7 @@ class RegistroAulaController extends Controller
         $jwtUser = $request->attributes->get('max_user');
         $usuarioId = $jwtUser->id ?? null;
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isProfessor = in_array('Professor', $funcoes, true);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
 
         $turmaId = $request->query('turma_id');
         $data = $request->query('data');
@@ -74,8 +74,7 @@ class RegistroAulaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $allowed = ['Administrador', 'Diretoria', 'Diretor', 'Professor'];
-        if (empty(array_intersect($allowed, $funcoes))) {
+        if (!\App\Support\Papeis::ehProfessor($funcoes) && !\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_VER)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
@@ -120,8 +119,8 @@ class RegistroAulaController extends Controller
         $usuarioId = $jwtUser->id ?? null;
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_EDITAR);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json([
@@ -278,8 +277,8 @@ class RegistroAulaController extends Controller
         $usuarioId = $jwtUser->id ?? null;
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_EDITAR);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json(['error' => 'Acesso negado.'], 403);

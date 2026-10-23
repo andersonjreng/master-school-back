@@ -103,14 +103,15 @@ class AvaliacaoController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
 
-        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isResponsavel = in_array('Responsável', $funcoes, true) || in_array('Responsavel', $funcoes, true);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_VER);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isResponsavel = \App\Support\Papeis::ehResponsavel($funcoes);
 
         $wheres = [];
         $params = [];
 
-        if ($isProfessor) {
+        // Quem acompanha todas as turmas vê tudo, mesmo que também dê aula.
+        if ($isProfessor && !$isAdmin) {
             $professorId = $this->professores->idDoUsuario($usuarioId);
             if (!$professorId) {
                 return response()->json(['error' => 'Acesso negado.', 'message' => 'Registro de professor não encontrado.'], 403);
@@ -201,8 +202,8 @@ class AvaliacaoController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_EDITAR);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Apenas professores, administradores ou diretores podem cadastrar avaliações.'], 403);
@@ -297,8 +298,8 @@ class AvaliacaoController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_EDITAR);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Apenas professores, administradores ou diretores podem editar avaliações.'], 403);
@@ -423,8 +424,8 @@ class AvaliacaoController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_EDITAR);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Apenas professores, administradores ou diretores podem excluir avaliações.'], 403);

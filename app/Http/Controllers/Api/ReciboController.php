@@ -17,8 +17,8 @@ class ReciboController extends Controller
         $jwtUser = $request->attributes->get('max_user');
         $usuarioIdLogado = (int) ($jwtUser->id ?? 0);
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isPrivilegiado = !empty(array_intersect(['Administrador', 'Diretoria'], $funcoes));
-        $isResponsavel = in_array('Responsável', $funcoes, true);
+        $isPrivilegiado = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::FINANCEIRO_OPERAR);
+        $isResponsavel = \App\Support\Papeis::ehResponsavel($funcoes);
 
         if (!$isPrivilegiado && !$isResponsavel) {
             return response()->json(['error' => 'Acesso negado.'], 403);

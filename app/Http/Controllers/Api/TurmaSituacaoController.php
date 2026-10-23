@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Tela Minhas Turmas: situação de hoje de cada turma e resumo de uma turma.
- * Gestão (Administrador/Diretoria) vê todas; professor, só onde leciona —
+ * Quem acompanha as turmas ou gerencia turmas vê todas; professor, só onde leciona —
  * e só as disciplinas dele. ?minhas=1 força o recorte de professor.
  */
 class TurmaSituacaoController extends Controller
@@ -47,7 +47,7 @@ class TurmaSituacaoController extends Controller
     {
         $user = $request->attributes->get('max_user');
         $funcoes = (array) ($user->funcoes ?? $user->roles ?? []);
-        if (Papeis::ehGestor($funcoes) && !$request->boolean('minhas')) {
+        if (\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_VER, \App\Support\Permissoes::TURMAS_GERENCIAR) && !$request->boolean('minhas')) {
             return [null, null];
         }
         $professorId = DB::table('professores')->where('usuario_id', (int) ($user->id ?? 0))->value('id');

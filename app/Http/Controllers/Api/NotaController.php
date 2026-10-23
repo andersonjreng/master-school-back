@@ -56,8 +56,8 @@ class NotaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdminOuDiretor = \App\Support\Papeis::ehGestor($funcoes);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isAdminOuDiretor = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_VER);
 
         if (!$isProfessor && !$isAdminOuDiretor) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Apenas professores, administradores ou diretores podem visualizar notas para lançamento.'], 403);
@@ -112,7 +112,7 @@ class NotaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (empty(array_intersect(['Administrador', 'Professor'], $funcoes))) {
+        if (!\App\Support\Papeis::ehProfessor($funcoes) && !\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_VER)) {
             return response()->json(['error' => 'Acesso negado. Apenas professores e administradores podem acessar esta grade.'], 403);
         }
 
@@ -201,7 +201,7 @@ class NotaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (empty(array_intersect(['Administrador', 'Professor'], $funcoes))) {
+        if (!\App\Support\Papeis::ehProfessor($funcoes) && !\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_VER)) {
             return response()->json(['error' => 'Acesso negado. Apenas professores e administradores.'], 403);
         }
 
@@ -272,7 +272,8 @@ class NotaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (empty(array_intersect(['Administrador', 'Professor', 'Responsável', 'Responsavel'], $funcoes))) {
+        if (!\App\Support\Papeis::ehProfessor($funcoes) && !\App\Support\Papeis::ehResponsavel($funcoes)
+            && !\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_VER)) {
             return response()->json(['error' => 'Acesso negado. Esta API é restrita.'], 403);
         }
 
@@ -326,7 +327,8 @@ class NotaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (empty(array_intersect(['Administrador', 'Professor', 'Responsável', 'Responsavel'], $funcoes))) {
+        if (!\App\Support\Papeis::ehProfessor($funcoes) && !\App\Support\Papeis::ehResponsavel($funcoes)
+            && !\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_VER)) {
             return response()->json(['error' => 'Acesso negado. Esta API é restrita.'], 403);
         }
 
@@ -390,7 +392,7 @@ class NotaController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (empty(array_intersect(['Administrador', 'Diretoria', 'Professor'], $funcoes))) {
+        if (!\App\Support\Papeis::ehProfessor($funcoes) && !\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_EDITAR)) {
             return response()->json(['error' => 'Acesso negado. Apenas professores e administradores podem lançar notas.'], 403);
         }
 
@@ -471,7 +473,7 @@ class NotaController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (empty(array_intersect(['Administrador', 'Diretoria', 'Professor'], $funcoes))) {
+        if (!\App\Support\Papeis::ehProfessor($funcoes) && !\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_EDITAR)) {
             return response()->json(['error' => 'Acesso negado. Apenas professores e administradores podem editar notas.'], 403);
         }
 

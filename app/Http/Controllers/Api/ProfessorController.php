@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\Avaliacoes\ProfessorResolver;
 use App\Services\Sistema\LogSistemaService;
+use App\Support\Papeis;
+use App\Support\Permissoes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,8 +33,9 @@ class ProfessorController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem listar todos os professores.'], 403);
+        // A lista também alimenta turmas (vínculos) e o acompanhamento pedagógico.
+        if (!Permissoes::pode($funcoes, Permissoes::EQUIPE_GERENCIAR, Permissoes::TURMAS_GERENCIAR, Permissoes::PEDAGOGICO_VER)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não consulta a lista de professores.'], 403);
         }
 
         $rows = DB::select("
@@ -71,8 +74,8 @@ class ProfessorController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem cadastrar professores.'], 403);
+        if (!Permissoes::pode($funcoes, Permissoes::EQUIPE_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não cadastra professores.'], 403);
         }
 
         $v = $this->validacao;
@@ -132,8 +135,8 @@ class ProfessorController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado.'], 403);
+        if (!Permissoes::pode($funcoes, Permissoes::EQUIPE_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não edita professores.'], 403);
         }
 
         $usuarioId = (int) $request->input('usuario_id');
@@ -199,7 +202,7 @@ class ProfessorController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Professor', $funcoes, true)) {
+        if (!Papeis::ehProfessor($funcoes)) {
             return response()->json(['error' => 'Acesso negado. Esta API é exclusiva para Professores.'], 403);
         }
 
@@ -242,7 +245,7 @@ class ProfessorController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!in_array('Professor', $funcoes, true)) {
+        if (!Papeis::ehProfessor($funcoes)) {
             return response()->json(['error' => 'Painel exclusivo para professores.'], 403);
         }
 
@@ -258,8 +261,8 @@ class ProfessorController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdminOuDiretor = \App\Support\Papeis::ehGestor($funcoes);
+        $isProfessor = Papeis::ehProfessor($funcoes);
+        $isAdminOuDiretor = Permissoes::pode($funcoes, Permissoes::PEDAGOGICO_VER, Permissoes::TURMAS_GERENCIAR);
 
         if (!$isProfessor && !$isAdminOuDiretor) {
             return response()->json(['error' => 'Acesso negado.'], 403);
@@ -268,7 +271,7 @@ class ProfessorController extends Controller
         $turmaId = $request->query('turma_id');
         $turmaIdValido = $turmaId !== null && is_numeric($turmaId);
 
-        if ($isProfessor) {
+        if ($isProfessor && !$isAdminOuDiretor) {
             $professorId = $this->professores->idDoUsuario((int) ($jwtUser->id ?? 0));
             if (!$professorId) {
                 return response()->json(['error' => 'Professor não encontrado.', 'message' => 'Usuário com função Professor não encontrado na tabela professores.'], 404);
@@ -308,6 +311,11 @@ class ProfessorController extends Controller
      */
     public function alunosPorTurma(Request $request): JsonResponse
     {
+        // Fix: sem checagem de perfil — qualquer usuário logado listava os
+        // alunos e os e-mails dos responsáveis de qualquer turma.
+        if (!Papeis::ehEquipe($this->funcoes($request))) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
         $turmaId = $request->query('turma_id');
         if (!$turmaId || !is_numeric($turmaId)) {
             return response()->json(['error' => 'ID da turma é obrigatório. Ex: ?turma_id=1'], 400);
@@ -368,6 +376,9 @@ class ProfessorController extends Controller
      */
     public function frequenciaPorTurma(Request $request): JsonResponse
     {
+        if (!Papeis::ehEquipe($this->funcoes($request))) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
         $turmaId = $request->query('turma_id');
         $dataConsulta = $request->query('data');
 
@@ -439,7 +450,8 @@ class ProfessorController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (empty(array_intersect(['Administrador', 'Diretoria', 'Professor', 'Responsável', 'Responsavel'], $funcoes))) {
+        $acessoAmplo = Papeis::ehProfessor($funcoes) || Permissoes::pode($funcoes, Permissoes::PEDAGOGICO_VER);
+        if (!$acessoAmplo && !Papeis::ehResponsavel($funcoes)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
@@ -450,8 +462,7 @@ class ProfessorController extends Controller
             return response()->json(['error' => 'O ID do aluno é obrigatório.'], 400);
         }
 
-        $ehResponsavelSomente = (in_array('Responsável', $funcoes, true) || in_array('Responsavel', $funcoes, true))
-            && empty(array_intersect(['Administrador', 'Diretoria', 'Professor'], $funcoes));
+        $ehResponsavelSomente = !$acessoAmplo;
 
         if ($ehResponsavelSomente) {
             $temDependente = DB::table('responsaveis as r')
@@ -519,6 +530,13 @@ class ProfessorController extends Controller
         $dataFrequencia = $request->input('data');
         $alunosFrequencia = $request->input('alunos', []);
 
+        // Fix: sem checagem de perfil — qualquer usuário logado gravava chamada.
+        $funcoes = $this->funcoes($request);
+        $podeQualquerTurma = Permissoes::pode($funcoes, Permissoes::PEDAGOGICO_EDITAR);
+        if (!$podeQualquerTurma && !Papeis::ehProfessor($funcoes)) {
+            return response()->json(['error' => 'Acesso negado. Apenas professores e quem pode lançar em qualquer turma.'], 403);
+        }
+
         if (!$dataFrequencia || empty($alunosFrequencia)) {
             return response()->json(['error' => 'Dados incompletos. Informe a data e a lista de alunos.'], 400);
         }
@@ -529,6 +547,14 @@ class ProfessorController extends Controller
             ?: (int) DB::table('turma_aluno')->where('aluno_id', (int) ($alunosFrequencia[0]['aluno_id'] ?? 0))->value('turma_id');
         if ($turmaId && ($bloqueio = app(\App\Services\Turmas\TurmaSituacaoService::class)->bloqueio($turmaId))) {
             return $bloqueio;
+        }
+        if (!$podeQualquerTurma) {
+            $professorId = $this->professores->idDoUsuario($usuarioId);
+            $leciona = $professorId && $turmaId && DB::table('turma_professor_disciplina')
+                ->where('turma_id', $turmaId)->where('professor_id', $professorId)->exists();
+            if (!$leciona) {
+                return response()->json(['error' => 'Acesso negado. Você não leciona nesta turma.'], 403);
+            }
         }
 
         // Dia sem aula no calendário escolar: só com confirmação explícita.
@@ -579,8 +605,8 @@ class ProfessorController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isAdmin = !empty(array_intersect(['Administrador', 'Diretoria', 'Diretor'], $funcoes));
-        $isProfessor = in_array('Professor', $funcoes, true);
+        $isAdmin = Permissoes::pode($funcoes, Permissoes::PEDAGOGICO_EDITAR);
+        $isProfessor = Papeis::ehProfessor($funcoes);
 
         if (!$isAdmin && !$isProfessor) {
             return response()->json(['error' => 'Acesso negado.'], 403);

@@ -31,7 +31,7 @@ class FrequenciaController extends Controller
     public function resumoGeral(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
-        if (!$this->access->possuiPapel($jwtUser, ['Administrador', 'Diretoria'])) {
+        if (!$this->access->acompanhaTodasTurmas($jwtUser)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
@@ -49,7 +49,7 @@ class FrequenciaController extends Controller
     public function resumoMensal(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
-        if (!$this->access->possuiPapel($jwtUser, ['Administrador', 'Diretoria'])) {
+        if (!$this->access->acompanhaTodasTurmas($jwtUser)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
@@ -68,7 +68,7 @@ class FrequenciaController extends Controller
     public function alunosPorTurma(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
-        if (!$this->access->possuiPapel($jwtUser, ['Administrador', 'Professor'])) {
+        if (!$this->access->acessoAmplo($jwtUser)) {
             return response()->json(['error' => 'Acesso negado. Esta API é restrita.'], 403);
         }
 
@@ -137,7 +137,7 @@ class FrequenciaController extends Controller
     public function porAluno(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
-        if (!$this->access->possuiPapel($jwtUser, ['Administrador', 'Professor', 'Responsável', 'Responsavel'])) {
+        if (!$this->access->podeConsultar($jwtUser)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
@@ -224,7 +224,7 @@ class FrequenciaController extends Controller
     public function porDia(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
-        if (!$this->access->possuiPapel($jwtUser, ['Administrador', 'Professor', 'Responsável', 'Responsavel'])) {
+        if (!$this->access->podeConsultar($jwtUser)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
@@ -291,7 +291,7 @@ class FrequenciaController extends Controller
     public function resumo(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
-        if (!$this->access->possuiPapel($jwtUser, ['Administrador', 'Diretoria', 'Professor', 'Responsável', 'Responsavel'])) {
+        if (!$this->access->podeConsultar($jwtUser)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
@@ -304,7 +304,7 @@ class FrequenciaController extends Controller
             return response()->json(['error' => 'Ano e turma_id são obrigatórios.'], 400);
         }
 
-        if ($this->access->responsavelSemAcessoAmplo($jwtUser, ['Administrador', 'Diretoria', 'Professor'])) {
+        if ($this->access->responsavelSemAcessoAmplo($jwtUser)) {
             if (!$alunoId) {
                 return response()->json(['error' => 'aluno_id é obrigatório para o perfil Responsável.'], 400);
             }
@@ -356,7 +356,7 @@ class FrequenciaController extends Controller
     public function relatorio(Request $request): JsonResponse
     {
         $jwtUser = $request->attributes->get('max_user');
-        if (!$this->access->possuiPapel($jwtUser, ['Administrador', 'Diretoria', 'Professor', 'Responsável', 'Responsavel'])) {
+        if (!$this->access->podeConsultar($jwtUser)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
@@ -369,7 +369,7 @@ class FrequenciaController extends Controller
             return response()->json(['error' => 'Parâmetros ano e turma_id são obrigatórios (mes entre 1 e 12).'], 400);
         }
 
-        if ($this->access->responsavelSemAcessoAmplo($jwtUser, ['Administrador', 'Diretoria', 'Professor'])) {
+        if ($this->access->responsavelSemAcessoAmplo($jwtUser)) {
             if (!$alunoId) {
                 return response()->json(['error' => 'aluno_id é obrigatório para o perfil Responsável.'], 400);
             }

@@ -59,6 +59,8 @@ class AuditoriaCatalogo
         'turmas'        => ['cadastro', 'Turmas'],
         'painel'        => ['sistema', 'Painel da Direção'],
         'logs'          => ['sistema', 'Logs do sistema'],
+        'permissoes'    => ['sistema', 'Permissões'],
+        'perfis'        => ['cadastro', 'Usuários'],
     ];
 
     /**
