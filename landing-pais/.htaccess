@@ -10,7 +10,7 @@ RewriteRule ^ /api/%1 [R=301,L]
 
 # Só as rotas da landing passam pro Laravel — o resto da API das escolas
 # não fica exposto neste subdomínio.
-RewriteRule ^api/(interesse-pais(/.*)?)$ backend/$1 [L]
+RewriteRule ^api/((interesse-pais|contato-escola)(/.*)?)$ backend/$1 [L]
 RewriteRule ^api/ - [R=404,L]
 
 # Qualquer outro caminho cai na landing

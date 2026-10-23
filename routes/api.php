@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\EscolaConfigController;
 use App\Http\Controllers\Api\FinanceiroController;
 use App\Http\Controllers\Api\FinanceiroParametrosController;
 use App\Http\Controllers\Api\FrequenciaController;
+use App\Http\Controllers\Api\ContatoEscolaController;
 use App\Http\Controllers\Api\InteressePaisController;
 use App\Http\Controllers\Api\ModeloAvaliacaoController;
 use App\Http\Controllers\Api\AnoLetivoController;
@@ -416,4 +417,10 @@ Route::prefix('interesse-pais')->group(function () {
     Route::post('/', [InteressePaisController::class, 'store'])->middleware('throttle:5,1');
     Route::get('/contagem', [InteressePaisController::class, 'contagem'])->middleware('throttle:60,1');
     Route::get('/exportar', [InteressePaisController::class, 'exportar'])->middleware('throttle:10,1');
+});
+
+// Site institucional (portalmasterschool.com.br) — pública, sem login, via CORS.
+Route::prefix('contato-escola')->group(function () {
+    Route::post('/', [ContatoEscolaController::class, 'store'])->middleware('throttle:5,1');
+    Route::get('/exportar', [ContatoEscolaController::class, 'exportar'])->middleware('throttle:10,1');
 });
