@@ -297,6 +297,15 @@ class RecadoService
         ]);
         DB::table('recados_conversas')->where('id', $conversaId)->update(['ultima_mensagem_em' => now()]);
         DB::table('recados_leituras')->updateOrInsert(['conversa_id' => $conversaId, 'usuario_id' => $autor], ['ultima_lida_id' => $msgId, 'lido_em' => now()]);
+
+        // Aviso no celular do outro lado: escola → família do aluno; família → professor da
+        // conversa (mensagem para "a secretaria" fica só no sino, sem push para a equipe toda).
+        $c = DB::table('recados_conversas')->where('id', $conversaId)->first(['aluno_id', 'escola_usuario_id', 'assunto']);
+        $para = $lado === 'escola' ? $this->usuariosFamilia((int) $c->aluno_id) : array_filter([(int) $c->escola_usuario_id]);
+        $quem = (string) DB::table('usuarios')->where('id', $autor)->value('nome_completo');
+        app(\App\Services\Notificacoes\PushService::class)->avisar(
+            array_diff($para, [$autor]), "Recado de $quem", "{$c->assunto}: " . mb_substr($texto, 0, 120), '/comunicacao?aba=recados', "recado:$conversaId",
+        );
     }
 
     /** @return int[] usuários responsáveis do aluno */

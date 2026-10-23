@@ -33,6 +33,17 @@ final class ManualSistema
                     . "Quando sair uma versão nova, aparece 'Nova versão disponível' no rodapé: toque em Atualizar.",
             ],
             [
+                'id' => 'push', 'area' => 'Geral', 'titulo' => 'Receber avisos no celular (notificações push)',
+                'menu' => 'Aviso "Receba os avisos da escola" no rodapé, ou Sino > "Avisos neste aparelho"', 'acesso' => [],
+                'palavras' => 'push notificacao celular aviso app fechado receber avisos ativar desativar desligar bloqueado tela de bloqueio',
+                'passos' => "Os avisos do sino (nota lançada, avaliação marcada, falta, boleto, comunicado, recado, ocorrência, rematrícula) também chegam na tela do "
+                    . "celular, mesmo com o app fechado.\n1. Toque em 'Ativar' no aviso 'Receba os avisos da escola' (rodapé) — ou abra o Sino e toque em "
+                    . "'Ativar' em 'Avisos neste aparelho'.\n2. Permita as notificações quando o celular perguntar. Chega um aviso de teste.\n"
+                    . "- No iPhone, primeiro instale o app na tela de início (iOS 16.4 ou mais novo); no Android funciona também pelo Chrome.\n"
+                    . "- Para testar ou desligar: Sino > 'Avisos neste aparelho' > Testar / Desligar. Ao sair da conta, o aparelho para de receber.\n"
+                    . "- Se aparecer 'bloqueados', libere as notificações nas configurações do site (cadeado ao lado do endereço) ou do celular.",
+            ],
+            [
                 'id' => 'sino', 'area' => 'Geral', 'titulo' => 'Notificações (sino)',
                 'menu' => 'Sino no topo da tela', 'acesso' => [],
                 'palavras' => 'notificacao aviso sino alerta lido nao lido novidade',

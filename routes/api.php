@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\ReciboController;
 use App\Http\Controllers\Api\RegistroAulaController;
 use App\Http\Controllers\Api\ResponsavelController;
 use App\Http\Controllers\Api\TurmaController;
+use App\Http\Controllers\Api\PushController;
 use App\Http\Controllers\Api\RematriculaController;
 use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\VinculoProfessorTurmaDisciplinaController;
@@ -459,6 +460,14 @@ Route::prefix('parametrizacoes')->middleware('max.jwt')->group(function () {
 });
 
 // Equivalente a api/escola/*.php.
+// Avisos no celular/computador (Web Push) — qualquer usuário logado, para os próprios aparelhos.
+Route::prefix('push')->middleware('max.jwt')->group(function () {
+    Route::get('/chave', [PushController::class, 'chave']);
+    Route::post('/inscrever', [PushController::class, 'inscrever']);
+    Route::post('/cancelar', [PushController::class, 'cancelar']);
+    Route::post('/teste', [PushController::class, 'teste']);
+});
+
 // Rematrícula online: a família aceita o contrato do ano novo e paga pelo app.
 Route::prefix('rematricula')->middleware('max.jwt')->group(function () {
     Route::middleware('max.role:Responsável')->group(function () {
