@@ -83,12 +83,10 @@ class ComunicacaoController extends Controller
         }
         usort($itens, fn ($a, $b) => strcmp((string) $b['quando'], (string) $a['quando']));
 
-        // Notificações (nota, avaliação, falta, boleto). Família e aluno com
-        // acesso ganham também os avisos que dependem do relógio.
-        $ehAluno = DB::table('alunos')->where('usuario_id', $p->usuarioId)->exists();
-        if ($p->ehFamilia() || $ehAluno) {
-            $this->notificacoes->sincronizarFamilia($p->usuarioId);
-        }
+        // Notificações: família (nota, avaliação, falta, boleto) e equipe
+        // (pendências do perfil). As que dependem do relógio são
+        // recalculadas aqui, no máximo a cada 10 min.
+        $this->notificacoes->sincronizar($p->usuarioId, $this->funcoes($request));
         $notif = $this->notificacoes->doUsuario($p->usuarioId);
 
         return response()->json(['success' => true, 'data' => [

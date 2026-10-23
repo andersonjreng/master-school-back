@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
  * Dois jeitos de nascer:
  * - por evento, chamado de quem grava: nota lançada/corrigida, avaliação
  *   marcada/remarcada/excluída, falta registrada (ou desfeita);
- * - na hora de ler (sincronizarFamilia): boleto perto de vencer ou vencido
+ * - na hora de ler (sincronizar): boleto perto de vencer ou vencido
  *   e lembrete de avaliação amanhã — coisas que dependem do relógio, sem
  *   precisar de cron.
  *
@@ -90,6 +90,28 @@ class NotificacaoService
         });
     }
 
+    /**
+     * Coordenação aprovou ou devolveu um planejamento: avisa o professor. A
+     * mesma chave por plano — se for devolvido e depois aprovado, o aviso é
+     * substituído.
+     */
+    public function planejamentoDecidido(int $planoId, bool $aprovado, ?string $comentario): void
+    {
+        $this->seguro(function () use ($planoId, $aprovado, $comentario) {
+            $p = DB::table('planos_aula as p')->join('professores as pr', 'pr.id', '=', 'p.professor_id')
+                ->join('turmas as t', 't.id', '=', 'p.turma_id')->join('disciplinas as d', 'd.id', '=', 'p.disciplina_id')
+                ->where('p.id', $planoId)->first(['pr.usuario_id', 'p.tema', 'p.data', 'p.turma_id', 't.nome_turma', 'd.nome_disciplina']);
+            if (!$p) {
+                return;
+            }
+            $onde = $this->juntar([$p->nome_disciplina, $p->nome_turma, Carbon::parse($p->data)->format('d/m')]);
+            $this->gravar([(int) $p->usuario_id], 'planejamento', "plano:$planoId", null,
+                ($aprovado ? 'Planejamento aprovado: ' : 'Planejamento devolvido: ') . $p->tema,
+                trim((string) $comentario) !== '' ? $onde . ' · "' . trim($comentario) . '"' : $onde,
+                '/planejamento', ['turma_id' => (int) $p->turma_id, 'data' => $p->data]);
+        });
+    }
+
     public function avaliacaoRemovida(int $avaliacaoId): void
     {
         $this->seguro(fn () => $this->apagarPorPrefixo(["avaliacao:$avaliacaoId:", "avaliacao_amanha:$avaliacaoId:"]));
@@ -148,89 +170,98 @@ class NotificacaoService
         });
     }
 
-    // ── Na hora de ler: boletos e lembretes (dependem do relógio) ───────────
+    // ── Na hora de ler: o que depende do relógio ou de uma situação ─────────
 
     /**
-     * Para quem é família: boleto vencendo em até 3 dias ou vencido e
-     * avaliação amanhã. Roda no máximo a cada 10 min por usuário.
+     * Chamado ao montar o sino. Família/aluno: boletos e avaliação amanhã.
+     * Equipe: pendências do perfil (AvisosEquipeService). Roda no máximo a
+     * cada 10 min por usuário.
      */
-    public function sincronizarFamilia(int $usuarioId): void
+    public function sincronizar(int $usuarioId, array $funcoes): void
     {
-        $this->seguro(function () use ($usuarioId) {
-            $chaveCache = 'notif_sync:' . config('database.connections.mysql.database') . ":$usuarioId";
-            if (Cache::get($chaveCache)) {
-                return;
-            }
-            Cache::put($chaveCache, 1, now()->addMinutes(self::MINUTOS_SINCRONIA));
+        if (!$this->disponivel()) {
+            return;
+        }
+        $chaveCache = 'notif_sync:' . config('database.connections.mysql.database') . ":$usuarioId";
+        if (Cache::get($chaveCache)) {
+            return;
+        }
+        Cache::put($chaveCache, 1, now()->addMinutes(self::MINUTOS_SINCRONIA));
 
-            $vinculos = DB::table('responsaveis as r')->join('aluno_responsavel as ar', 'ar.responsavel_id', '=', 'r.id')
-                ->where('r.usuario_id', $usuarioId)->get(['ar.aluno_id', 'r.id as responsavel_id']);
-            $alunoProprio = DB::table('alunos')->where('usuario_id', $usuarioId)->value('id');
-            $alunos = $vinculos->pluck('aluno_id')->map(fn ($id) => (int) $id)->all();
-            if ($alunoProprio) {
-                $alunos[] = (int) $alunoProprio;
-            }
-            if (!$alunos) {
-                return;
-            }
-            $nomes = $this->nomesAlunos($alunos);
+        $this->seguro(fn () => $this->avisosFamilia($usuarioId));
+        $this->seguro(fn () => app(AvisosEquipeService::class)->sincronizar($usuarioId, $funcoes));
+    }
 
-            // Boletos: só para quem paga — mesma regra do boleto
-            // (FinanceiroHelperService::buscarResponsavelPagador): o principal
-            // ou, sem principal marcado, o primeiro responsável vinculado.
-            $financeiros = [];
-            foreach ($vinculos as $v) {
-                $pagador = DB::table('aluno_responsavel')->where('aluno_id', $v->aluno_id)
-                    ->orderByDesc('principal')->orderBy('responsavel_id')->value('responsavel_id');
-                if ((int) $pagador === (int) $v->responsavel_id) {
-                    $financeiros[] = (int) $v->aluno_id;
-                }
-            }
-            if ($financeiros) {
-                $hoje = now()->toDateString();
-                $limite = now()->addDays(self::DIAS_BOLETO_ANTES)->toDateString();
-                $parcelas = DB::table('parcelas')->whereIn('aluno_id', $financeiros)
-                    ->whereIn('status', ['pendente', 'vencido'])->where('data_vencimento', '<=', $limite)
-                    ->get(['id', 'aluno_id', 'numero_parcela', 'valor_final', 'data_vencimento']);
-                foreach ($parcelas as $p) {
-                    $vencida = $p->data_vencimento < $hoje;
-                    $titulo = $vencida
-                        ? 'Mensalidade em atraso'
-                        : ($p->data_vencimento === $hoje ? 'Mensalidade vence hoje' : 'Mensalidade vence em ' . Carbon::parse($p->data_vencimento)->format('d/m'));
-                    $this->gravar([$usuarioId], 'boleto', "boleto:{$p->id}:" . ($vencida ? 'vencido' : 'vencendo'), (int) $p->aluno_id,
-                        $titulo,
-                        $this->juntar([$nomes[$p->aluno_id] ?? null, "Parcela {$p->numero_parcela}", 'R$ ' . number_format((float) $p->valor_final, 2, ',', '.'),
-                            'venc. ' . Carbon::parse($p->data_vencimento)->format('d/m')]),
-                        '/meus-pagamentos', ['aluno_id' => (int) $p->aluno_id], reabrir: false);
-                }
-                // Parcela paga/cancelada depois do aviso: some do sino.
-                $abertas = DB::table('notificacoes')->where('usuario_id', $usuarioId)->where('tipo', 'boleto')->pluck('chave', 'id');
-                $apagar = [];
-                foreach ($abertas as $id => $chave) {
-                    $parcelaId = (int) explode(':', $chave)[1];
-                    if (!$parcelas->contains('id', $parcelaId)) {
-                        $apagar[] = $id;
-                    }
-                }
-                if ($apagar) {
-                    DB::table('notificacoes')->whereIn('id', $apagar)->delete();
-                }
-            }
+    /** Boleto vencendo em até 3 dias ou vencido e avaliação amanhã (quem não tem dependente/matrícula não gera nada). */
+    private function avisosFamilia(int $usuarioId): void
+    {
+        $vinculos = DB::table('responsaveis as r')->join('aluno_responsavel as ar', 'ar.responsavel_id', '=', 'r.id')
+            ->where('r.usuario_id', $usuarioId)->get(['ar.aluno_id', 'r.id as responsavel_id']);
+        $alunoProprio = DB::table('alunos')->where('usuario_id', $usuarioId)->value('id');
+        $alunos = $vinculos->pluck('aluno_id')->map(fn ($id) => (int) $id)->all();
+        if ($alunoProprio) {
+            $alunos[] = (int) $alunoProprio;
+        }
+        if (!$alunos) {
+            return;
+        }
+        $nomes = $this->nomesAlunos($alunos);
 
-            // Lembrete: avaliação amanhã nas turmas dos dependentes.
-            $amanha = now()->addDay()->toDateString();
-            $avs = DB::table('avaliacoes as a')->join('turma_aluno as ta', 'ta.turma_id', '=', 'a.turma_id')
-                ->join('disciplinas as d', 'd.id', '=', 'a.disciplina_id')
-                ->join('turmas as t', 't.id', '=', 'a.turma_id')
-                ->whereIn('ta.aluno_id', $alunos)->where('a.data_aplicacao', $amanha)
-                ->get(['a.id', 'ta.aluno_id', 'a.descricao', 'a.turma_id', 't.nome_turma', 'd.nome_disciplina']);
-            foreach ($avs as $a) {
-                $this->gravar([$usuarioId], 'avaliacao', "avaliacao_amanha:{$a->id}:{$a->aluno_id}", (int) $a->aluno_id,
-                    "Amanhã tem avaliação de {$a->nome_disciplina}",
-                    $this->juntar([$nomes[$a->aluno_id] ?? null, $a->descricao ?: null]),
-                    '/avaliacoes', ['turma_id' => (int) $a->turma_id, 'nome_turma' => $a->nome_turma], reabrir: false);
+        // Boletos: só para quem paga — mesma regra do boleto
+        // (FinanceiroHelperService::buscarResponsavelPagador): o principal
+        // ou, sem principal marcado, o primeiro responsável vinculado.
+        $financeiros = [];
+        foreach ($vinculos as $v) {
+            $pagador = DB::table('aluno_responsavel')->where('aluno_id', $v->aluno_id)
+                ->orderByDesc('principal')->orderBy('responsavel_id')->value('responsavel_id');
+            if ((int) $pagador === (int) $v->responsavel_id) {
+                $financeiros[] = (int) $v->aluno_id;
             }
-        });
+        }
+        if ($financeiros) {
+            $hoje = now()->toDateString();
+            $limite = now()->addDays(self::DIAS_BOLETO_ANTES)->toDateString();
+            $parcelas = DB::table('parcelas')->whereIn('aluno_id', $financeiros)
+                ->whereIn('status', ['pendente', 'vencido'])->where('data_vencimento', '<=', $limite)
+                ->get(['id', 'aluno_id', 'numero_parcela', 'valor_final', 'data_vencimento']);
+            foreach ($parcelas as $p) {
+                $vencida = $p->data_vencimento < $hoje;
+                $titulo = $vencida
+                    ? 'Mensalidade em atraso'
+                    : ($p->data_vencimento === $hoje ? 'Mensalidade vence hoje' : 'Mensalidade vence em ' . Carbon::parse($p->data_vencimento)->format('d/m'));
+                $this->gravar([$usuarioId], 'boleto', "boleto:{$p->id}:" . ($vencida ? 'vencido' : 'vencendo'), (int) $p->aluno_id,
+                    $titulo,
+                    $this->juntar([$nomes[$p->aluno_id] ?? null, "Parcela {$p->numero_parcela}", 'R$ ' . number_format((float) $p->valor_final, 2, ',', '.'),
+                        'venc. ' . Carbon::parse($p->data_vencimento)->format('d/m')]),
+                    '/meus-pagamentos', ['aluno_id' => (int) $p->aluno_id], reabrir: false);
+            }
+            // Parcela paga/cancelada depois do aviso: some do sino.
+            $abertas = DB::table('notificacoes')->where('usuario_id', $usuarioId)->where('tipo', 'boleto')->pluck('chave', 'id');
+            $apagar = [];
+            foreach ($abertas as $id => $chave) {
+                $parcelaId = (int) explode(':', $chave)[1];
+                if (!$parcelas->contains('id', $parcelaId)) {
+                    $apagar[] = $id;
+                }
+            }
+            if ($apagar) {
+                DB::table('notificacoes')->whereIn('id', $apagar)->delete();
+            }
+        }
+
+        // Lembrete: avaliação amanhã nas turmas dos dependentes.
+        $amanha = now()->addDay()->toDateString();
+        $avs = DB::table('avaliacoes as a')->join('turma_aluno as ta', 'ta.turma_id', '=', 'a.turma_id')
+            ->join('disciplinas as d', 'd.id', '=', 'a.disciplina_id')
+            ->join('turmas as t', 't.id', '=', 'a.turma_id')
+            ->whereIn('ta.aluno_id', $alunos)->where('a.data_aplicacao', $amanha)
+            ->get(['a.id', 'ta.aluno_id', 'a.descricao', 'a.turma_id', 't.nome_turma', 'd.nome_disciplina']);
+        foreach ($avs as $a) {
+            $this->gravar([$usuarioId], 'avaliacao', "avaliacao_amanha:{$a->id}:{$a->aluno_id}", (int) $a->aluno_id,
+                "Amanhã tem avaliação de {$a->nome_disciplina}",
+                $this->juntar([$nomes[$a->aluno_id] ?? null, $a->descricao ?: null]),
+                '/avaliacoes', ['turma_id' => (int) $a->turma_id, 'nome_turma' => $a->nome_turma], reabrir: false);
+        }
     }
 
     // ── Leitura ──────────────────────────────────────────────────────────────
@@ -289,7 +320,7 @@ class NotificacaoService
 
     // ── Base ─────────────────────────────────────────────────────────────────
 
-    private function gravar(array $usuarioIds, string $tipo, string $chave, ?int $alunoId, string $titulo, ?string $detalhe,
+    public function gravar(array $usuarioIds, string $tipo, string $chave, ?int $alunoId, string $titulo, ?string $detalhe,
         ?string $link, ?array $query, bool $reabrir = true): void
     {
         $usuarioIds = array_values(array_unique(array_filter(array_map('intval', $usuarioIds))));

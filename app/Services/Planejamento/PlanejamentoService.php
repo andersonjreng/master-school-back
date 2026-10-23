@@ -233,6 +233,7 @@ class PlanejamentoService
             'aprovado_por' => $usuarioId,
             'aprovado_em' => now(),
         ]);
+        app(\App\Services\Notificacoes\NotificacaoService::class)->planejamentoDecidido($id, $aprovar, $comentario);
         return $this->buscar($id);
     }
 
