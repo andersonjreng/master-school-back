@@ -7,6 +7,7 @@ use App\Services\Comunicacao\MuralService;
 use App\Services\Comunicacao\OcorrenciaService;
 use App\Services\Comunicacao\PerfilComunicacao;
 use App\Services\Comunicacao\RecadoService;
+use App\Services\Notificacoes\NotificacaoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,7 @@ class ComunicacaoController extends Controller
         private MuralService $mural,
         private OcorrenciaService $ocorrencias,
         private RecadoService $recados,
+        private NotificacaoService $notificacoes,
     ) {}
 
     private function perfil(Request $r): PerfilComunicacao
@@ -81,15 +83,34 @@ class ComunicacaoController extends Controller
         }
         usort($itens, fn ($a, $b) => strcmp((string) $b['quando'], (string) $a['quando']));
 
+        // Notificações: família (nota, avaliação, falta, boleto) e equipe
+        // (pendências do perfil). As que dependem do relógio são
+        // recalculadas aqui, no máximo a cada 10 min.
+        $this->notificacoes->sincronizar($p->usuarioId, $this->funcoes($request));
+        $notif = $this->notificacoes->doUsuario($p->usuarioId);
+
         return response()->json(['success' => true, 'data' => [
             'mural_nao_lidos' => $naoLidos->count(),
             'mural_ciencia' => $cienciaMural->count(),
             'recados_nao_lidos' => array_sum(array_column($conversas, 'nao_lidas')),
             'ocorrencias' => count($ocorrencias),
-            'total' => $naoLidos->count() + array_sum(array_column($conversas, 'nao_lidas')) + count($ocorrencias),
+            'notificacoes_nao_lidas' => $notif['nao_lidas'],
+            'notificacoes' => $notif['itens'],
+            'total' => $naoLidos->count() + array_sum(array_column($conversas, 'nao_lidas')) + count($ocorrencias) + $notif['nao_lidas'],
             'itens' => array_slice($itens, 0, 10),
             'perfil' => ['gestor' => $p->gestor, 'professor' => $p->professorId !== null, 'familia' => $p->ehFamilia()],
         ]]);
+    }
+
+    public function notificacaoLida(Request $request, int $id): JsonResponse
+    {
+        $this->notificacoes->marcarLida($this->perfil($request)->usuarioId, $id);
+        return response()->json(['success' => true]);
+    }
+
+    public function notificacoesLidas(Request $request): JsonResponse
+    {
+        return response()->json(['success' => true, 'marcadas' => $this->notificacoes->marcarTodasLidas($this->perfil($request)->usuarioId)]);
     }
 
     // ── Mural ──────────────────────────────────────────────────────────────

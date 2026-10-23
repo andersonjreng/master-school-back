@@ -23,8 +23,8 @@ class VinculoProfessorTurmaDisciplinaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas Administradores podem gerenciar vínculos de disciplinas e turmas.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::TURMAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não gerencia vínculos de disciplinas e turmas.'], 403);
         }
 
         $turmaId = $request->input('turma_id');
@@ -79,8 +79,8 @@ class VinculoProfessorTurmaDisciplinaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas Administradores podem gerenciar vínculos de disciplinas e turmas.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::TURMAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não gerencia vínculos de disciplinas e turmas.'], 403);
         }
 
         $professorIdRaiz = $request->input('professor_id');

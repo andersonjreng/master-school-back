@@ -18,7 +18,7 @@ class TurmaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (empty(array_intersect(['Administrador', 'Diretoria', 'Professor'], $funcoes))) {
+        if (!\App\Support\Papeis::ehEquipe($funcoes)) {
             return response()->json(['error' => 'Acesso negado. Você não tem permissão para listar as turmas.'], 403);
         }
 
@@ -94,8 +94,8 @@ class TurmaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem criar turmas.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::TURMAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não pode criar turmas.'], 403);
         }
 
         $nomeTurma = $request->input('nome_turma');
@@ -169,8 +169,8 @@ class TurmaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem editar turmas.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::TURMAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não pode editar turmas.'], 403);
         }
 
         $turmaId = $request->input('turma_id');
@@ -267,8 +267,8 @@ class TurmaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem alterar o status da turma.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::TURMAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não pode alterar o status da turma.'], 403);
         }
 
         $turmaId = $request->query('turma_id');
@@ -378,8 +378,8 @@ class TurmaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem vincular alunos a turmas.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::TURMAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não pode vincular alunos a turmas.'], 403);
         }
 
         $turmaId = $request->input('turma_id');
@@ -491,8 +491,8 @@ class TurmaController extends Controller
         $jwtUser = $request->attributes->get('max_user');
         $usuarioIdLogado = (int) ($jwtUser->id ?? 0);
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem promover alunos.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::TURMAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não pode promover alunos.'], 403);
         }
 
         $turmaOrigemId = (int) $request->input('turma_origem_id');
@@ -639,8 +639,8 @@ class TurmaController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem transferir alunos.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::TURMAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não pode transferir alunos.'], 403);
         }
 
         $alunoId = $request->input('aluno_id');

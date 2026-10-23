@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Diário de Classe. Gestão (Administrador/Diretoria) vê qualquer turma e
+ * Diário de Classe. Quem acompanha as turmas (pedagogico.ver) vê qualquer turma e
  * todas as disciplinas; professor, só as turmas em que leciona e as
  * disciplinas dele.
  */
@@ -55,7 +55,7 @@ class DiarioClasseController extends Controller
     {
         $user = $request->attributes->get('max_user');
         $funcoes = (array) ($user->funcoes ?? $user->roles ?? []);
-        if (Papeis::ehGestor($funcoes)) {
+        if (\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_VER)) {
             return [null, null];
         }
         $professorId = DB::table('professores')->where('usuario_id', (int) ($user->id ?? 0))->value('id');

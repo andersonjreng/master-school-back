@@ -148,7 +148,8 @@ priorizando o que exige ação (queda de frequência, turmas/disciplinas com mé
 pendências do dia) e incluindo pelo menos um ponto positivo quando houver. Use números do JSON; não invente dados.
 Não cite nomes de alunos. Se o dia não for letivo, foque nos indicadores do período.
 Responda APENAS com um array JSON, sem texto fora dele, no formato:
-[{"tipo":"alerta|atencao|positivo|info","titulo":"até 60 caracteres","texto":"até 220 caracteres","pergunta":"pergunta de acompanhamento para o Max"}]
+[{"tipo":"alerta|atencao|positivo|info","area":"pedagogico|financeiro|geral","titulo":"até 60 caracteres","texto":"até 220 caracteres","pergunta":"pergunta de acompanhamento para o Max"}]
+"area" = financeiro sempre que o ponto citar valores, mensalidades, inadimplência, recebimentos ou contratos.
 TXT;
     }
 

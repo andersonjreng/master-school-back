@@ -17,6 +17,10 @@ class AppServiceProvider extends ServiceProvider
         // float no JSON sai com lixo de ponto flutuante (ex: 4914.6999999999998...
         // em vez de 4914.7). Forçando aqui pra não depender da config do host.
         ini_set('serialize_precision', -1);
+
+        // Uma instância por requisição: as exceções de permissão são lidas uma
+        // vez por requisição (e por escola — o banco muda com o subdomínio).
+        $this->app->scoped(\App\Services\Sistema\PermissaoService::class);
     }
 
     /**

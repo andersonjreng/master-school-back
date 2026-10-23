@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Services\AlunoResponsavelVinculoService;
 use App\Services\Financeiro\CancelamentoMatriculaFinanceiraService;
 use App\Services\Sistema\LogSistemaService;
+use App\Support\Papeis;
+use App\Support\Permissoes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,13 +33,13 @@ class AlunoController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem listar todos os alunos.'], 403);
+        if (!Permissoes::pode($funcoes, Permissoes::PESSOAS_VER)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não consulta o cadastro de alunos.'], 403);
         }
 
         $rows = DB::select("
             SELECT
-                a.id AS aluno_id, u.id AS usuario_id, u.nome_completo AS nome_aluno, u.email, u.ativo,
+                a.id AS aluno_id, u.id AS usuario_id, u.nome_completo AS nome_aluno, u.email, u.ativo, u.acesso_portal,
                 u.data_cadastro, u.telefone, a.matricula, a.cpf, a.data_nascimento, a.sexo, a.endereco, a.numero, a.complemento,
                 a.bairro, a.cidade, a.uf, a.cep, a.observacoes_saude, a.status_matricula, a.foto_path,
                 t.id AS turma_id, t.nome_turma,
@@ -58,7 +60,7 @@ class AlunoController extends Controller
             ) mc ON mc.aluno_id = a.id
             LEFT JOIN usuarios uc ON mc.encerrado_por = uc.id
             GROUP BY
-                a.id, u.id, u.nome_completo, u.email, u.ativo, u.data_cadastro, u.telefone,
+                a.id, u.id, u.nome_completo, u.email, u.ativo, u.acesso_portal, u.data_cadastro, u.telefone,
                 a.matricula, a.cpf, a.data_nascimento, a.sexo, a.endereco, a.numero, a.complemento, a.bairro, a.cidade, a.uf, a.cep,
                 a.observacoes_saude, a.status_matricula, a.foto_path, t.id, t.nome_turma,
                 mc.motivo_encerramento, mc.motivo_detalhe, mc.data_fim, uc.nome_completo
@@ -68,6 +70,7 @@ class AlunoController extends Controller
         $alunos = array_map(function ($row) {
             $arr = (array) $row;
             $arr['ativo'] = (bool) $row->ativo;
+            $arr['acesso_portal'] = (bool) $row->acesso_portal;
             $arr['foto_url'] = \App\Services\Alunos\FotoAlunoService::url($row->foto_path);
             $arr['responsaveis_array'] = $row->responsaveis_vinculados ? explode(' ; ', $row->responsaveis_vinculados) : [];
             unset($arr['responsaveis_vinculados']);
@@ -82,14 +85,17 @@ class AlunoController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem cadastrar alunos.'], 403);
+        if (!Permissoes::pode($funcoes, Permissoes::PESSOAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não cadastra alunos.'], 403);
         }
 
         $v = $this->validacao;
         $nomeCompleto = $v->texto($request->input('nome_completo'));
         $email = $v->texto($request->input('email'));
         $senhaBruta = (string) $request->input('senha');
+        // Criança não precisa de login: o acesso ao portal é opcional (e-mail
+        // e senha só são exigidos quando ele é criado).
+        $acessoPortal = $request->boolean('acesso_portal');
         $turmaId = (int) $request->input('turma_id');
         $dataNascimento = $v->texto($request->input('data_nascimento'));
         $responsaveis = $this->responsaveisDoRequest($request);
@@ -101,8 +107,8 @@ class AlunoController extends Controller
             ?? (!$dataNascimento ? 'Informe a data de nascimento.' : null)
             ?? (!$turma ? 'Escolha a turma.' : null)
             ?? ($turma->status !== 'Ativa' ? 'Essa turma está encerrada — escolha uma turma ativa.' : null)
-            ?? $v->validarEmail($email)
-            ?? $v->validarSenha($senhaBruta)
+            ?? $v->validarEmail($email, null, $acessoPortal)
+            ?? ($acessoPortal ? $v->validarSenha($senhaBruta) : null)
             ?? $v->validarCpf('alunos', $request->input('cpf'), false)
             ?? $v->validarTelefone($request->input('telefone'), false)
             ?? $v->validarEndereco($request->all(), false)
@@ -114,14 +120,15 @@ class AlunoController extends Controller
         }
 
         try {
-            [$alunoId, $usuarioId] = DB::transaction(function () use ($request, $v, $nomeCompleto, $email, $senhaBruta, $turma, $matricula, $dataNascimento, $responsaveis) {
+            [$alunoId, $usuarioId] = DB::transaction(function () use ($request, $v, $nomeCompleto, $email, $senhaBruta, $acessoPortal, $turma, $matricula, $dataNascimento, $responsaveis) {
                 $usuarioId = DB::table('usuarios')->insertGetId([
                     'nome_completo' => $nomeCompleto,
                     'email'         => $email,
-                    'senha'         => Hash::make($senhaBruta),
+                    'senha'         => $acessoPortal ? Hash::make($senhaBruta) : null,
                     'telefone'      => $v->telefone($request->input('telefone')),
                     'data_cadastro' => now(),
                     'ativo'         => 1,
+                    'acesso_portal' => $acessoPortal ? 1 : 0,
                 ]);
 
                 $alunoId = DB::table('alunos')->insertGetId([
@@ -144,8 +151,10 @@ class AlunoController extends Controller
                     'origem'      => 'sistema',
                 ]);
 
-                // ID 4 = Aluno (ver tabela funcoes).
-                DB::table('usuario_funcao')->insert(['usuario_id' => $usuarioId, 'funcao_id' => 4]);
+                DB::table('usuario_funcao')->insert([
+                    'usuario_id' => $usuarioId,
+                    'funcao_id'  => DB::table('funcoes')->where('nome_funcao', Papeis::ALUNO)->value('id'),
+                ]);
 
                 $this->sincronizarResponsaveis($alunoId, $responsaveis);
 
@@ -232,7 +241,7 @@ class AlunoController extends Controller
     public function show(Request $request, int $id): JsonResponse
     {
         $funcoes = (array) ($request->attributes->get('max_user')->funcoes ?? $request->attributes->get('max_user')->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+        if (!Permissoes::pode($funcoes, Permissoes::PESSOAS_VER)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
         $aluno = DB::table('alunos as a')
@@ -241,12 +250,13 @@ class AlunoController extends Controller
             ->leftJoin('turmas as t', 't.id', '=', 'ta.turma_id')
             ->where('a.id', $id)
             ->orderByDesc('t.ano_letivo')
-            ->first(['a.id as aluno_id', 'u.id as usuario_id', 'u.nome_completo', 'u.email', 'u.telefone', 'u.ativo', 'a.matricula', 'a.cpf',
+            ->first(['a.id as aluno_id', 'u.id as usuario_id', 'u.nome_completo', 'u.email', 'u.telefone', 'u.ativo', 'u.acesso_portal', 'a.matricula', 'a.cpf',
                 'a.data_nascimento', 'a.sexo', 'a.cep', 'a.endereco', 'a.numero', 'a.complemento', 'a.bairro', 'a.cidade', 'a.uf',
                 'a.observacoes_saude', 'a.status_matricula', 't.id as turma_id', 't.nome_turma', 't.ano_letivo']);
         if (!$aluno) {
             return response()->json(['error' => 'Aluno não encontrado.'], 404);
         }
+        $aluno->acesso_portal = (bool) $aluno->acesso_portal;
         $aluno->responsaveis = DB::table('aluno_responsavel as ar')
             ->join('responsaveis as r', 'r.id', '=', 'ar.responsavel_id')
             ->join('usuarios as u', 'u.id', '=', 'r.usuario_id')
@@ -267,8 +277,8 @@ class AlunoController extends Controller
         $jwtUser = $request->attributes->get('max_user');
         $usuarioIdLogado = (int) ($jwtUser->id ?? 0);
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem inativar um aluno.'], 403);
+        if (!Permissoes::pode($funcoes, Permissoes::PESSOAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não pode inativar alunos.'], 403);
         }
 
         $alunoId = $request->input('aluno_id');
@@ -391,8 +401,8 @@ class AlunoController extends Controller
             }
         }
 
-        $isAdminOuProfessor = !empty(array_intersect(['Administrador', 'Diretoria', 'Professor', 'Docente'], $userRoles));
-        $isResponsavel = in_array('Responsável', $userRoles, true) || in_array('Responsavel', $userRoles, true);
+        $isAdminOuProfessor = Papeis::ehProfessor($userRoles) || Permissoes::pode($userRoles, Permissoes::PEDAGOGICO_VER);
+        $isResponsavel = Papeis::ehResponsavel($userRoles);
 
         if (!$isAdminOuProfessor) {
             if ($isResponsavel) {
@@ -500,8 +510,8 @@ class AlunoController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (empty(array_intersect(['Administrador', 'Professor'], $funcoes))) {
-            return response()->json(['error' => 'Acesso negado. Apenas professores e administradores.'], 403);
+        if (!Papeis::ehProfessor($funcoes) && !Permissoes::pode($funcoes, Permissoes::PEDAGOGICO_VER)) {
+            return response()->json(['error' => 'Acesso negado. Apenas professores e quem acompanha as turmas.'], 403);
         }
 
         $turmaIdParam = $request->query('turma_id');
@@ -565,6 +575,11 @@ class AlunoController extends Controller
      */
     public function setFoto(Request $request): JsonResponse
     {
+        // Fix: não havia checagem nenhuma — qualquer usuário logado trocava a
+        // foto de qualquer aluno.
+        if (!Permissoes::pode($this->funcoes($request), Permissoes::PESSOAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não edita o cadastro de alunos.'], 403);
+        }
         $alunoId = $request->input('aluno_id');
         $file = $request->file('foto');
 
@@ -604,6 +619,9 @@ class AlunoController extends Controller
 
     public function deleteFoto(Request $request): JsonResponse
     {
+        if (!Permissoes::pode($this->funcoes($request), Permissoes::PESSOAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não edita o cadastro de alunos.'], 403);
+        }
         $alunoId = $request->input('aluno_id');
         if (!$alunoId) {
             return response()->json(['error' => 'ID do aluno é obrigatório.'], 400);
@@ -633,8 +651,8 @@ class AlunoController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado.'], 403);
+        if (!Permissoes::pode($funcoes, Permissoes::PESSOAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não edita o cadastro de alunos.'], 403);
         }
 
         $alunoId = (int) $request->input('aluno_id');
@@ -654,7 +672,7 @@ class AlunoController extends Controller
         $responsaveis = $request->has('responsaveis') || $request->has('responsaveis_ids') ? $this->responsaveisDoRequest($request) : null;
 
         $erro = ($novoNome !== null && !$v->texto($novoNome) ? 'Informe o nome completo.' : null)
-            ?? ($request->has('email') ? $v->validarEmail($request->input('email'), $usuarioId) : null)
+            ?? ($request->has('email') ? $v->validarEmail($request->input('email'), $usuarioId, $this->temAcessoPortal($usuarioId)) : null)
             ?? ($request->filled('senha') ? $v->validarSenha($request->input('senha')) : null)
             ?? ($request->has('cpf') && $v->formatarCpf($request->input('cpf')) !== $atual->cpf ? $v->validarCpf('alunos', $request->input('cpf'), false, $alunoId) : null)
             ?? ($request->has('telefone') ? $v->validarTelefone($request->input('telefone'), false) : null)
@@ -745,6 +763,62 @@ class AlunoController extends Controller
     }
 
     /**
+     * Libera ou retira o acesso do aluno ao portal. Liberar exige e-mail (o
+     * atual ou um novo) e senha; retirar mantém o cadastro e só bloqueia o
+     * login. Body: { acesso: bool, email?: string, senha?: string }
+     */
+    public function acessoPortal(Request $request, int $id): JsonResponse
+    {
+        $jwtUser = $request->attributes->get('max_user');
+        if (!Permissoes::pode($this->funcoes($request), Permissoes::PESSOAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não edita o cadastro de alunos.'], 403);
+        }
+        $aluno = DB::table('alunos as a')->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
+            ->where('a.id', $id)->first(['u.id as usuario_id', 'u.nome_completo', 'u.email', 'u.senha']);
+        if (!$aluno) {
+            return response()->json(['error' => 'Aluno não encontrado.'], 404);
+        }
+
+        $v = $this->validacao;
+        $liberar = $request->boolean('acesso');
+        $campos = ['acesso_portal' => $liberar ? 1 : 0];
+
+        if ($liberar) {
+            $email = $v->texto($request->input('email')) ?? $aluno->email;
+            $senha = (string) $request->input('senha');
+            $erro = $v->validarEmail($email, (int) $aluno->usuario_id)
+                ?? (!$aluno->senha || $senha !== '' ? $v->validarSenha($senha) : null);
+            if ($erro) {
+                return response()->json(['error' => $erro], 422);
+            }
+            $campos['email'] = $email;
+            if ($senha !== '') {
+                $campos['senha'] = Hash::make($senha);
+            }
+        }
+
+        DB::table('usuarios')->where('id', $aluno->usuario_id)->update($campos);
+
+        $this->log->registrar(
+            $request, (int) ($jwtUser->id ?? 0), $jwtUser->nome ?? null, $liberar ? 'ALUNO_ACESSO_LIBERADO' : 'ALUNO_ACESSO_RETIRADO',
+            "/api/alunos/$id/acesso", 'POST',
+            ($liberar ? 'Acesso ao portal liberado' : 'Acesso ao portal retirado') . " para o aluno {$aluno->nome_completo} (ID $id).", 200,
+            ['aluno_id' => $id, 'email' => $campos['email'] ?? $aluno->email]
+        );
+
+        return response()->json([
+            'success' => $liberar ? 'Acesso ao portal liberado.' : 'Acesso ao portal retirado.',
+            'acesso_portal' => $liberar,
+            'email' => $campos['email'] ?? $aluno->email,
+        ]);
+    }
+
+    private function temAcessoPortal(int $usuarioId): bool
+    {
+        return (bool) DB::table('usuarios')->where('id', $usuarioId)->value('acesso_portal');
+    }
+
+    /**
      * Equivalente a api/admin/post_responsavel_aluno.php — vincula vários
      * responsáveis a UM aluno (payload fixa aluno_id, varia responsaveis_ids).
      */
@@ -752,8 +826,8 @@ class AlunoController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem vincular responsáveis a alunos.'], 403);
+        if (!Permissoes::pode($funcoes, Permissoes::PESSOAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não vincula responsáveis a alunos.'], 403);
         }
 
         $alunoId = $request->input('aluno_id');

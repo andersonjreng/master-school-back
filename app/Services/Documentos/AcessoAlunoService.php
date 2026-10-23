@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Equivalente a alunoAcessivelPeloUsuario() em api/helpers/escola_helper.php.
- * Administrador/Diretoria acessam qualquer aluno; Responsável só os próprios
+ * Quem emite documentos (permissão documentos.emitir) acessa qualquer aluno; Responsável só os próprios
  * dependentes (via aluno_responsavel). Nunca confia só no aluno_id do request.
  */
 class AcessoAlunoService
@@ -15,11 +15,11 @@ class AcessoAlunoService
     {
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
 
-        if (in_array('Administrador', $funcoes, true) || in_array('Diretoria', $funcoes, true)) {
+        if (\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::DOCUMENTOS_EMITIR)) {
             return true;
         }
 
-        if (!in_array('Responsável', $funcoes, true) && !in_array('Responsavel', $funcoes, true)) {
+        if (!\App\Support\Papeis::ehResponsavel($funcoes)) {
             return false;
         }
 

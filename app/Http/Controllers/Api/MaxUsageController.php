@@ -63,7 +63,7 @@ class MaxUsageController extends Controller
                 SELECT
                     uf.usuario_id,
                     CASE
-                        WHEN MAX(CASE WHEN f.nome_funcao IN ('Administrador','Diretoria') THEN 1 ELSE 0 END) = 1 THEN 'Administrador'
+                        WHEN MAX(CASE WHEN f.nome_funcao IN ('Administrador','Diretoria','Coordenação Pedagógica','Secretaria','Tesouraria') THEN 1 ELSE 0 END) = 1 THEN 'Administrador'
                         WHEN MAX(CASE WHEN f.nome_funcao = 'Professor' THEN 1 ELSE 0 END) = 1 THEN 'Professor'
                         ELSE 'Responsavel'
                     END AS funcao
@@ -112,10 +112,11 @@ class MaxUsageController extends Controller
 
     private function funcaoPrincipal(array $funcoes): string
     {
-        if (in_array('Administrador', $funcoes, true) || in_array('Diretoria', $funcoes, true)) {
+        // Faixa de limite do Max: equipe administrativa usa a de "Administrador".
+        if (\App\Support\Papeis::ehAdministrativo($funcoes)) {
             return 'Administrador';
         }
-        if (in_array('Professor', $funcoes, true)) {
+        if (\App\Support\Papeis::ehProfessor($funcoes)) {
             return 'Professor';
         }
 

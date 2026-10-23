@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Planejamento de aulas. Professor planeja as turmas/disciplinas dele; a
- * gestão (Administrador/Diretoria) vê todas e, se a aprovação estiver ligada
+ * gestão (planejamento.aprovar ou pedagogico.editar) vê todas e, se a aprovação estiver ligada
  * nas Parametrizações, aprova ou devolve os planos.
  */
 class PlanejamentoController extends Controller
@@ -201,7 +201,8 @@ class PlanejamentoController extends Controller
     {
         $user = $request->attributes->get('max_user');
         $funcoes = (array) ($user->funcoes ?? $user->roles ?? []);
-        if (Papeis::ehGestor($funcoes)) {
+        // Gestão do planejamento: vê e ajusta o de todos os professores.
+        if (\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PLANEJAMENTO_APROVAR, \App\Support\Permissoes::PEDAGOGICO_EDITAR)) {
             return [null, true, null];
         }
         $professorId = DB::table('professores')->where('usuario_id', (int) ($user->id ?? 0))->value('id');

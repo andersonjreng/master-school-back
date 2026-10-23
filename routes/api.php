@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AlunoController;
+use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AvaliacaoController;
 use App\Http\Controllers\Api\BnccController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\Api\ContratoFinanceiroController;
 use App\Http\Controllers\Api\ConvenioCobrancaController;
 use App\Http\Controllers\Api\DescontoPadraoController;
 use App\Http\Controllers\Api\DocumentoController;
+use App\Http\Controllers\Api\DocumentoEscolarController;
 use App\Http\Controllers\Api\EscolaConfigController;
 use App\Http\Controllers\Api\FinanceiroController;
 use App\Http\Controllers\Api\FinanceiroParametrosController;
@@ -40,6 +42,11 @@ use Illuminate\Support\Facades\Route;
 
 // Equivalente a api/auth/login.php — sem middleware, é o próprio ponto de entrada.
 Route::post('/auth/login', [AuthController::class, 'login']);
+Route::get('/auth/permissoes', [AuthController::class, 'permissoes'])->middleware('max.jwt');
+
+// Acesso por permissão (max.pode:...), não por perfil: o padrão de cada
+// perfil e as exceções da escola ficam em App\Support\Permissoes e na tela
+// Configurações → Permissões. "max.role:equipe" = qualquer perfil da equipe.
 
 Route::prefix('agent')->middleware('max.jwt')->group(function () {
     Route::post('/chat', [MaxAgentController::class, 'chat']);
@@ -49,9 +56,15 @@ Route::prefix('agent')->middleware('max.jwt')->group(function () {
     Route::get('/conversas/{id}', [MaxConversaController::class, 'show']);
     Route::delete('/conversas/{id}', [MaxConversaController::class, 'destroy']);
 
-    Route::middleware('max.role:Administrador,Diretoria')->group(function () {
+    Route::middleware('max.pode:configuracoes.escola')->group(function () {
         Route::get('/uso-admin', [MaxUsageController::class, 'usoAdmin']);
     });
+});
+
+// Auditoria: eventos que só o front vê (telas visitadas, exportações feitas
+// no navegador, impressões, logout). Qualquer usuário logado.
+Route::prefix('auditoria')->middleware('max.jwt')->group(function () {
+    Route::post('/eventos', [AuditoriaController::class, 'eventos']);
 });
 
 // Equivalente a api/documentos/*.php do backend legado — mesmo JWT compartilhado
@@ -62,6 +75,21 @@ Route::prefix('documentos')->middleware('max.jwt')->group(function () {
     Route::get('/historico-escolar', [DocumentoController::class, 'historicoEscolar']);
     Route::get('/ficha-aluno', [DocumentoController::class, 'fichaAluno']);
     Route::get('/ficha-inscricao', [DocumentoController::class, 'fichaInscricao']);
+
+    Route::get('/declaracao-frequencia', [DocumentoEscolarController::class, 'declaracaoFrequencia']);
+    Route::get('/declaracao-quitacao', [DocumentoEscolarController::class, 'declaracaoQuitacao']);
+    Route::get('/nada-consta', [DocumentoEscolarController::class, 'nadaConsta']);
+    Route::get('/declaracao-transferencia', [DocumentoEscolarController::class, 'declaracaoTransferencia']);
+    Route::get('/declaracao-escolaridade', [DocumentoEscolarController::class, 'declaracaoEscolaridade']);
+    Route::get('/relatorio-ocorrencias', [DocumentoEscolarController::class, 'relatorioOcorrencias']);
+    Route::get('/carteirinha', [DocumentoEscolarController::class, 'carteirinha']);
+
+    // Documentos da turma e atestado de vaga: só a secretaria.
+    Route::middleware('max.pode:documentos.emitir')->group(function () {
+        Route::get('/ata-resultados', [DocumentoEscolarController::class, 'ataResultados']);
+        Route::get('/lista-alunos', [DocumentoEscolarController::class, 'listaAlunos']);
+        Route::get('/atestado-vaga', [DocumentoEscolarController::class, 'atestadoVaga']);
+    });
 });
 
 // Equivalente a api/frequencia/*.php do backend legado.
@@ -140,6 +168,7 @@ Route::prefix('alunos')->middleware('max.jwt')->group(function () {
     Route::post('/vincular-responsaveis', [AlunoController::class, 'vincularResponsaveis']);
     Route::get('/proxima-matricula', [AlunoController::class, 'proximaMatriculaSugerida']);
     Route::get('/{id}', [AlunoController::class, 'show'])->whereNumber('id');
+    Route::post('/{id}/acesso', [AlunoController::class, 'acessoPortal'])->whereNumber('id');
 });
 
 // Equivalente a api/responsaveis/*.php.
@@ -173,7 +202,7 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
         Route::get('/minhas-parcelas/{id}/pix', [ParcelaController::class, 'meuPix'])->whereNumber('id');
     });
 
-    Route::middleware('max.role:Administrador,Diretoria')->group(function () {
+    Route::middleware('max.pode:financeiro.operar')->group(function () {
         Route::get('/configuracoes', [FinanceiroController::class, 'configuracoes']);
         Route::get('/dashboard', [FinanceiroController::class, 'dashboard']);
         Route::get('/pendencias', [ContratoFinanceiroController::class, 'pendencias']);
@@ -184,13 +213,7 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
         Route::delete('/contratos/dispensas', [ContratoFinanceiroController::class, 'removerDispensa']);
 
         Route::get('/planos', [PlanoPagamentoController::class, 'index']);
-        Route::post('/planos', [PlanoPagamentoController::class, 'store']);
-        Route::put('/planos', [PlanoPagamentoController::class, 'update']);
-        Route::delete('/planos', [PlanoPagamentoController::class, 'destroy']);
-
         Route::get('/descontos', [DescontoPadraoController::class, 'index']);
-        Route::post('/descontos', [DescontoPadraoController::class, 'store']);
-        Route::put('/descontos', [DescontoPadraoController::class, 'update']);
 
         Route::get('/matriculas/alunos-turma', [MatriculaFinanceiraController::class, 'alunosTurmaMatricula']);
         Route::get('/matriculas', [MatriculaFinanceiraController::class, 'index']);
@@ -230,17 +253,24 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
         Route::get('/asaas/eventos', [AsaasController::class, 'eventos']);
     });
 
-    // Convênio bancário (cadastro dos dados do cedente).
-    Route::middleware('max.role:Administrador,Diretoria')->group(function () {
+    // Planos, descontos e convênio bancário (dados do cedente).
+    Route::middleware('max.pode:financeiro.configurar')->group(function () {
+        Route::post('/planos', [PlanoPagamentoController::class, 'store']);
+        Route::put('/planos', [PlanoPagamentoController::class, 'update']);
+        Route::delete('/planos', [PlanoPagamentoController::class, 'destroy']);
+
+        Route::post('/descontos', [DescontoPadraoController::class, 'store']);
+        Route::put('/descontos', [DescontoPadraoController::class, 'update']);
+
         Route::get('/convenio', [ConvenioCobrancaController::class, 'index']);
         Route::post('/convenio', [ConvenioCobrancaController::class, 'store']);
     });
 });
 
-// Equivalente a api/whatsapp/{testar_notificacoes,get_historico_notificacoes}.php.
-// api/whatsapp/enviar_notificacoes_diarias.php (cron CLI multi-tenant) NÃO foi
-// portado — ver comentário em NotificacaoWhatsappController.
-Route::prefix('whatsapp')->middleware(['max.jwt', 'max.role:Administrador,Diretoria'])->group(function () {
+// Notificações WhatsApp: painel, teste manual e histórico. O envio diário é o
+// comando whatsapp:notificacoes-diarias (cron).
+Route::prefix('whatsapp')->middleware(['max.jwt', 'max.pode:whatsapp.gerenciar'])->group(function () {
+    Route::get('/painel', [NotificacaoWhatsappController::class, 'painel']);
     Route::post('/testar', [NotificacaoWhatsappController::class, 'testar']);
     Route::get('/historico', [NotificacaoWhatsappController::class, 'historico']);
 });
@@ -257,7 +287,7 @@ Route::prefix('admin')->middleware('max.jwt')->group(function () {
     Route::get('/disciplinas', [MetadadoController::class, 'disciplinas']);
     Route::get('/sistemas-avaliacao', [MetadadoController::class, 'sistemasAvaliacao']);
 
-    Route::middleware('max.role:Administrador,Diretoria,Professor')->group(function () {
+    Route::middleware('max.role:equipe')->group(function () {
         Route::get('/turmas', [TurmaController::class, 'index']);
         Route::get('/turmas/{id}', [TurmaController::class, 'show'])->whereNumber('id');
         Route::get('/turmas/alunos-por-turma-chart', [TurmaController::class, 'alunosPorTurmaChart']);
@@ -266,23 +296,41 @@ Route::prefix('admin')->middleware('max.jwt')->group(function () {
         Route::get('/turmas/{id}/resumo', [\App\Http\Controllers\Api\TurmaSituacaoController::class, 'resumo'])->whereNumber('id');
     });
 
-    // Logs do sistema: só Administrador (auditoria técnica).
-    Route::middleware('max.role:Administrador')->group(function () {
+    // Logs do sistema (auditoria). Padrão: só Administrador.
+    Route::middleware('max.pode:logs.ver')->group(function () {
         Route::get('/logs', [LogController::class, 'index']);
+        Route::get('/logs/filtros', [LogController::class, 'filtros']);
+        Route::get('/logs/resumo', [LogController::class, 'resumo']);
+        Route::get('/logs/exportar', [LogController::class, 'exportar']);
+        Route::get('/logs/sessoes', [LogController::class, 'sessoes']);
+        Route::get('/logs/sessoes/{sid}', [LogController::class, 'sessao'])->where('sid', '[A-Za-z0-9]+');
+        Route::get('/logs/{id}', [LogController::class, 'show'])->whereNumber('id');
     });
 
-    Route::middleware('max.role:Administrador,Diretoria')->group(function () {
-        // Painel da Direção (home de Administrador/Diretoria).
+    // Permissões por perfil: só Administrador, sempre.
+    Route::middleware('max.role:Administrador')->group(function () {
+        Route::get('/permissoes', [\App\Http\Controllers\Api\PermissaoController::class, 'index']);
+        Route::put('/permissoes/{perfil}', [\App\Http\Controllers\Api\PermissaoController::class, 'update']);
+        Route::post('/permissoes/{perfil}/restaurar', [\App\Http\Controllers\Api\PermissaoController::class, 'restaurar']);
+    });
+
+    // Painel da Direção (home da gestão).
+    Route::middleware('max.pode:painel.direcao')->group(function () {
         Route::get('/painel', [PainelDirecaoController::class, 'index']);
         Route::get('/painel/detalhe/{tipo}', [PainelDirecaoController::class, 'detalhe'])->whereAlpha('tipo');
         Route::get('/painel/briefing', [PainelDirecaoController::class, 'briefing']);
         Route::post('/painel/explicar', [PainelDirecaoController::class, 'explicar']);
+    });
 
+    Route::middleware('max.pode:equipe.gerenciar')->group(function () {
+        Route::get('/perfis', [UsuarioController::class, 'perfis']);
         Route::get('/usuarios', [UsuarioController::class, 'index']);
         Route::post('/usuarios', [UsuarioController::class, 'store']);
         Route::put('/usuarios', [UsuarioController::class, 'update']);
         Route::patch('/usuarios/status', [UsuarioController::class, 'patchStatus']);
+    });
 
+    Route::middleware('max.pode:turmas.gerenciar')->group(function () {
         Route::post('/turmas', [TurmaController::class, 'store']);
         Route::put('/turmas', [TurmaController::class, 'update']);
         Route::patch('/turmas/status', [TurmaController::class, 'updateStatus']);
@@ -315,6 +363,8 @@ Route::prefix('bncc')->middleware('max.jwt')->group(function () {
 Route::prefix('comunicacao')->middleware('max.jwt')->group(function () {
     Route::get('/resumo', [\App\Http\Controllers\Api\ComunicacaoController::class, 'resumo']);
     Route::get('/pulso', [\App\Http\Controllers\Api\ComunicacaoController::class, 'pulso']);
+    Route::post('/notificacoes/lidas', [\App\Http\Controllers\Api\ComunicacaoController::class, 'notificacoesLidas']);
+    Route::post('/notificacoes/{id}/lida', [\App\Http\Controllers\Api\ComunicacaoController::class, 'notificacaoLida'])->whereNumber('id');
 
     Route::get('/mural', [\App\Http\Controllers\Api\ComunicacaoController::class, 'mural']);
     Route::get('/mural/opcoes', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralOpcoes']);
@@ -355,7 +405,7 @@ Route::prefix('planejamento')->middleware('max.jwt')->group(function () {
     Route::delete('/{id}', [\App\Http\Controllers\Api\PlanejamentoController::class, 'destroy'])->whereNumber('id');
     Route::post('/{id}/enviar', [\App\Http\Controllers\Api\PlanejamentoController::class, 'enviar'])->whereNumber('id');
     Route::post('/{id}/dada', [\App\Http\Controllers\Api\PlanejamentoController::class, 'dada'])->whereNumber('id');
-    Route::middleware('max.role:Administrador,Diretoria')->group(function () {
+    Route::middleware('max.pode:planejamento.aprovar')->group(function () {
         Route::get('/pendentes', [\App\Http\Controllers\Api\PlanejamentoController::class, 'pendentes']);
         Route::post('/{id}/aprovar', [\App\Http\Controllers\Api\PlanejamentoController::class, 'aprovar'])->whereNumber('id');
         Route::post('/{id}/devolver', [\App\Http\Controllers\Api\PlanejamentoController::class, 'devolver'])->whereNumber('id');
@@ -372,7 +422,7 @@ Route::prefix('diario')->middleware('max.jwt')->group(function () {
 // para qualquer perfil logado; alteração só para a gestão.
 Route::prefix('calendario')->middleware('max.jwt')->group(function () {
     Route::get('/{ano}', [\App\Http\Controllers\Api\CalendarioEscolarController::class, 'show'])->whereNumber('ano');
-    Route::middleware('max.role:Administrador,Diretoria')->group(function () {
+    Route::middleware('max.pode:calendario.editar')->group(function () {
         Route::post('/{ano}/marcacoes', [\App\Http\Controllers\Api\CalendarioEscolarController::class, 'store'])->whereNumber('ano');
         Route::put('/marcacoes/{id}', [\App\Http\Controllers\Api\CalendarioEscolarController::class, 'update'])->whereNumber('id');
         Route::delete('/marcacoes/{id}', [\App\Http\Controllers\Api\CalendarioEscolarController::class, 'destroy'])->whereNumber('id');
@@ -380,27 +430,31 @@ Route::prefix('calendario')->middleware('max.jwt')->group(function () {
     });
 });
 
-Route::prefix('parametrizacoes')->middleware(['max.jwt', 'max.role:Administrador,Diretoria'])->group(function () {
-    Route::get('/pedagogico', [\App\Http\Controllers\Api\PlanejamentoController::class, 'configuracao']);
-    Route::put('/pedagogico', [\App\Http\Controllers\Api\PlanejamentoController::class, 'salvarConfiguracao']);
-    Route::get('/modelos-avaliacao', [ModeloAvaliacaoController::class, 'index']);
-    Route::post('/modelos-avaliacao', [ModeloAvaliacaoController::class, 'store']);
-    Route::put('/modelos-avaliacao/{id}', [ModeloAvaliacaoController::class, 'update'])->whereNumber('id');
-    Route::patch('/modelos-avaliacao/{id}/status', [ModeloAvaliacaoController::class, 'updateStatus'])->whereNumber('id');
-    Route::delete('/modelos-avaliacao/{id}', [ModeloAvaliacaoController::class, 'destroy'])->whereNumber('id');
+Route::prefix('parametrizacoes')->middleware('max.jwt')->group(function () {
+    Route::middleware('max.pode:configuracoes.escola')->group(function () {
+        Route::get('/pedagogico', [\App\Http\Controllers\Api\PlanejamentoController::class, 'configuracao']);
+        Route::put('/pedagogico', [\App\Http\Controllers\Api\PlanejamentoController::class, 'salvarConfiguracao']);
+        Route::get('/modelos-avaliacao', [ModeloAvaliacaoController::class, 'index']);
+        Route::post('/modelos-avaliacao', [ModeloAvaliacaoController::class, 'store']);
+        Route::put('/modelos-avaliacao/{id}', [ModeloAvaliacaoController::class, 'update'])->whereNumber('id');
+        Route::patch('/modelos-avaliacao/{id}/status', [ModeloAvaliacaoController::class, 'updateStatus'])->whereNumber('id');
+        Route::delete('/modelos-avaliacao/{id}', [ModeloAvaliacaoController::class, 'destroy'])->whereNumber('id');
 
-    Route::get('/max', [PainelDirecaoController::class, 'configMax']);
-    Route::put('/max', [PainelDirecaoController::class, 'salvarConfigMax']);
+        Route::get('/max', [PainelDirecaoController::class, 'configMax']);
+        Route::put('/max', [PainelDirecaoController::class, 'salvarConfigMax']);
 
-    Route::get('/financeiro', [FinanceiroParametrosController::class, 'show']);
-    Route::put('/financeiro', [FinanceiroParametrosController::class, 'update']);
-    Route::post('/financeiro/asaas/testar', [FinanceiroParametrosController::class, 'testarAsaas']);
+        Route::get('/anos-letivos', [AnoLetivoController::class, 'index']);
+        Route::post('/anos-letivos', [AnoLetivoController::class, 'store']);
+        Route::put('/anos-letivos/{ano}', [AnoLetivoController::class, 'update'])->whereNumber('ano');
+        Route::post('/anos-letivos/{ano}/duplicar-turmas', [AnoLetivoController::class, 'duplicarTurmas'])->whereNumber('ano');
+        Route::post('/anos-letivos/{ano}/encerrar-turmas', [AnoLetivoController::class, 'encerrarTurmas'])->whereNumber('ano');
+    });
 
-    Route::get('/anos-letivos', [AnoLetivoController::class, 'index']);
-    Route::post('/anos-letivos', [AnoLetivoController::class, 'store']);
-    Route::put('/anos-letivos/{ano}', [AnoLetivoController::class, 'update'])->whereNumber('ano');
-    Route::post('/anos-letivos/{ano}/duplicar-turmas', [AnoLetivoController::class, 'duplicarTurmas'])->whereNumber('ano');
-    Route::post('/anos-letivos/{ano}/encerrar-turmas', [AnoLetivoController::class, 'encerrarTurmas'])->whereNumber('ano');
+    Route::middleware('max.pode:financeiro.configurar')->group(function () {
+        Route::get('/financeiro', [FinanceiroParametrosController::class, 'show']);
+        Route::put('/financeiro', [FinanceiroParametrosController::class, 'update']);
+        Route::post('/financeiro/asaas/testar', [FinanceiroParametrosController::class, 'testarAsaas']);
+    });
 });
 
 // Equivalente a api/escola/*.php.

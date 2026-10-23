@@ -103,14 +103,15 @@ class AvaliacaoController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
 
-        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isResponsavel = in_array('Responsável', $funcoes, true) || in_array('Responsavel', $funcoes, true);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_VER);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isResponsavel = \App\Support\Papeis::ehResponsavel($funcoes);
 
         $wheres = [];
         $params = [];
 
-        if ($isProfessor) {
+        // Quem acompanha todas as turmas vê tudo, mesmo que também dê aula.
+        if ($isProfessor && !$isAdmin) {
             $professorId = $this->professores->idDoUsuario($usuarioId);
             if (!$professorId) {
                 return response()->json(['error' => 'Acesso negado.', 'message' => 'Registro de professor não encontrado.'], 403);
@@ -201,8 +202,8 @@ class AvaliacaoController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_EDITAR);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Apenas professores, administradores ou diretores podem cadastrar avaliações.'], 403);
@@ -277,6 +278,8 @@ class AvaliacaoController extends Controller
             'data_cadastro'      => now(),
         ]);
 
+        app(\App\Services\Notificacoes\NotificacaoService::class)->avaliacaoMarcada((int) $novoId);
+
         $this->log->registrar(
             $request, $usuarioId, $username, 'CRIACAO_AVALIACAO', '/api/avaliacoes', 'POST',
             "Avaliação #$novoId criada" . ($descricao !== '' ? ": \"$descricao\"" : '') . " (turma #$turmaId, disciplina #$disciplinaId)",
@@ -297,8 +300,8 @@ class AvaliacaoController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_EDITAR);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Apenas professores, administradores ou diretores podem editar avaliações.'], 403);
@@ -407,6 +410,8 @@ class AvaliacaoController extends Controller
             'valor_maximo'       => $valorMaximo,
         ]);
 
+        app(\App\Services\Notificacoes\NotificacaoService::class)->avaliacaoMarcada((int) $avaliacaoId);
+
         $this->log->registrar(
             $request, $usuarioId, $username, 'ATUALIZACAO_AVALIACAO', '/api/avaliacoes', 'PUT',
             "Avaliação #$avaliacaoId atualizada" . ($descricao !== '' ? ": \"$descricao\"" : ''),
@@ -423,8 +428,8 @@ class AvaliacaoController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $username = $jwtUser->nome ?? 'desconhecido';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = \App\Support\Papeis::ehGestor($funcoes);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_EDITAR);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Apenas professores, administradores ou diretores podem excluir avaliações.'], 403);
@@ -458,6 +463,7 @@ class AvaliacaoController extends Controller
         }
 
         DB::table('avaliacoes')->where('id', $avaliacaoId)->delete();
+        app(\App\Services\Notificacoes\NotificacaoService::class)->avaliacaoRemovida($avaliacaoId);
 
         $this->log->registrar(
             $request, $usuarioId, $username, 'EXCLUSAO_AVALIACAO', '/api/avaliacoes', 'DELETE',

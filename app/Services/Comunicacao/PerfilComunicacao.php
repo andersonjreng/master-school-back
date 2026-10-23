@@ -2,12 +2,12 @@
 
 namespace App\Services\Comunicacao;
 
-use App\Support\Papeis;
+use App\Support\Permissoes;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Quem é o usuário na Central de Comunicação (montado uma vez por requisição):
- * gestão (Administrador/Diretoria), professor (e as turmas dele) e/ou família
+ * gestão (permissão comunicacao.gestao), professor (e as turmas dele) e/ou família
  * (dependentes e as turmas deles). Um usuário pode ter mais de um papel.
  */
 class PerfilComunicacao
@@ -30,7 +30,7 @@ class PerfilComunicacao
         $p->usuarioId = (int) ($jwtUser->id ?? 0);
         $p->nome = (string) ($jwtUser->nome ?? '');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $p->gestor = Papeis::ehGestor($funcoes);
+        $p->gestor = Permissoes::pode($funcoes, Permissoes::COMUNICACAO_GESTAO);
 
         $prof = DB::table('professores')->where('usuario_id', $p->usuarioId)->value('id');
         if ($prof) {
