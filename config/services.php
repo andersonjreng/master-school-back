@@ -34,6 +34,13 @@ return [
         'token'     => env('INTERESSE_PAIS_TOKEN'),       // senha da exportação CSV
     ],
 
+    // Site institucional (portalmasterschool.com.br) — por padrão usa o mesmo
+    // destinatário e token da landing dos pais.
+    'contato_escolas' => [
+        'notificar' => env('CONTATO_ESCOLAS_NOTIFICAR', env('INTERESSE_PAIS_NOTIFICAR')),
+        'token'     => env('CONTATO_ESCOLAS_TOKEN', env('INTERESSE_PAIS_TOKEN')),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
