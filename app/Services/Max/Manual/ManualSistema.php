@@ -178,11 +178,14 @@ final class ManualSistema
             [
                 'id' => 'mural', 'area' => 'Comunicação', 'titulo' => 'Mural de comunicados',
                 'menu' => 'Comunicação > Mural', 'acesso' => [],
-                'palavras' => 'comunicado mural aviso publicar circular recado geral confirmar leitura anexo pdf imagem fixar',
+                'palavras' => 'comunicado mural aviso publicar circular recado geral confirmar leitura anexo pdf imagem fixar max escreve escrever texto redigir melhorar texto',
                 'passos' => "Publicar (equipe): Comunicação > Mural > 'Escrever um comunicado'. Escolha 'Para quem' (escola toda, equipe, todas as famílias "
                     . "ou turmas), título, texto, anexo (imagem/PDF), validade, 'Pedir confirmação de leitura' e 'Fixar no topo' > Publicar. "
                     . "Professores publicam para a equipe ou para as famílias das próprias turmas; a escola toda é com a gestão. "
-                    . "'Ver quem leu' mostra quem leu/confirmou.\nFamília: lê, reage e toca em 'Confirmar leitura' quando pedido (não comenta).",
+                    . "'Ver quem leu' mostra quem leu/confirmou.\n'Max, escreve pra mim' (abaixo do texto): escreva só as ideias (ex.: 'passeio dia "
+                    . "14, sair 7h30, trazer lanche') e o Max devolve título e texto prontos; dá para pedir 'Mais curto', 'Mais formal' ou 'Mais "
+                    . "acolhedor', usar ou descartar ('Desfazer' volta o rascunho). Ele não inventa datas nem valores: o que faltar vem entre "
+                    . "[colchetes] para completar. Nada é publicado sem tocar em Publicar.\nFamília: lê, reage e toca em 'Confirmar leitura' quando pedido (não comenta).",
             ],
             [
                 'id' => 'recados', 'area' => 'Comunicação', 'titulo' => 'Recados (conversa privada escola ↔ família)',
@@ -197,7 +200,8 @@ final class ManualSistema
                 'menu' => 'Comunicação > Ocorrências e anotações', 'acesso' => [],
                 'palavras' => 'ocorrencia anotacao comportamento elogio saude grave atencao ciencia registro disciplinar',
                 'passos' => "Equipe: Comunicação > Ocorrências e anotações > Registrar. Escolha o aluno, tipo, nível (Informativo, Atenção, Grave), título e "
-                    . "descrição. Deixe como 'Anotação interna' (só a equipe vê) ou 'Compartilhar com a família' e, se quiser, peça ciência.\n"
+                    . "descrição. Deixe como 'Anotação interna' (só a equipe vê) ou 'Compartilhar com a família' e, se quiser, peça ciência. "
+                    . "'Max, escreve pra mim' reescreve o registro de forma objetiva e respeitosa (sem rótulos sobre a criança), para revisar antes de salvar.\n"
                     . "Família: vê as ocorrências compartilhadas do filho e toca em 'Estou ciente'.",
             ],
 

@@ -373,6 +373,7 @@ Route::prefix('comunicacao')->middleware('max.jwt')->group(function () {
 
     Route::get('/mural', [\App\Http\Controllers\Api\ComunicacaoController::class, 'mural']);
     Route::get('/mural/opcoes', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralOpcoes']);
+    Route::post('/max/escrever', [\App\Http\Controllers\Api\ComunicacaoController::class, 'maxEscrever']);
     Route::post('/mural', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralSalvar']);
     Route::post('/mural/lidos', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralTodosLidos']);
     Route::post('/mural/{id}', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralSalvar'])->whereNumber('id');
