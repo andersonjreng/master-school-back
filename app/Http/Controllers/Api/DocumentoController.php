@@ -160,13 +160,17 @@ class DocumentoController extends Controller
         }
 
         // Cada turma/ano letivo distinto que o aluno já cursou, do mais antigo pro mais recente.
-        $anos = DB::select('
-            SELECT DISTINCT m.ano_letivo, m.turma_id, t.nome_turma
+        $numeros = app(\App\Services\Matriculas\NumeroMatriculaService::class);
+        $numero = $numeros->sqlNumeroDoAno();
+        $porAno = $numeros->porAno();
+        $anos = DB::select("
+            SELECT DISTINCT m.ano_letivo, m.turma_id, t.nome_turma, t.status AS status_turma, $numero AS numero
             FROM matriculas m
             JOIN turmas t ON m.turma_id = t.id
+            JOIN alunos a ON a.id = m.aluno_id
             WHERE m.aluno_id = ?
             ORDER BY m.ano_letivo ASC
-        ', [$alunoId]);
+        ", [$alunoId]);
 
         $historico = [];
         foreach ($anos as $ano) {
@@ -181,11 +185,18 @@ class DocumentoController extends Controller
             $somaMaxima = (float) ($notas->soma_maxima ?? 0);
             $mediaGeral = $somaMaxima > 0 ? round(($somaNota / $somaMaxima) * 10, 1) : null;
 
+            // Resultado registrado no encerramento do ano vale mais que a conta pela média.
+            $registrado = $porAno ? DB::table('matriculas')->where('aluno_id', $alunoId)->where('turma_id', $ano->turma_id)
+                ->whereNotNull('resultado')->orderByDesc('id')->value('resultado') : null;
             $historico[] = [
                 'ano_letivo'  => (int) $ano->ano_letivo,
+                'numero'      => $ano->numero,
                 'nome_turma'  => $ano->nome_turma,
                 'media_geral' => $mediaGeral,
-                'status'      => $mediaGeral === null ? 'Sem notas lançadas' : ($mediaGeral >= 6 ? 'Aprovado' : 'Reprovado'),
+                'status'      => [
+                    'promovido' => 'Aprovado', 'retido' => 'Retido', 'concluiu' => 'Concluiu a etapa',
+                ][$registrado] ?? ($ano->status_turma === 'Ativa' ? 'Cursando'
+                    : ($mediaGeral === null ? 'Sem notas lançadas' : ($mediaGeral >= 6 ? 'Aprovado' : 'Reprovado'))),
             ];
         }
 
@@ -223,10 +234,12 @@ class DocumentoController extends Controller
 
         // Resolve a turma do aluno naquele ano letivo via matriculas (histórico) —
         // não assume a turma ATUAL, pra continuar certo após promoção/transferência.
+        $numero = app(\App\Services\Matriculas\NumeroMatriculaService::class)->sqlNumeroDoAno();
         $rowTurma = DB::selectOne("
-            SELECT turma_id, t.nome_turma
+            SELECT turma_id, t.nome_turma, $numero AS numero
             FROM matriculas m
             JOIN turmas t ON m.turma_id = t.id
+            JOIN alunos a ON a.id = m.aluno_id
             WHERE m.aluno_id = ? AND m.ano_letivo = ?
             ORDER BY (m.status = 'ativa') DESC, m.id DESC
             LIMIT 1
@@ -239,6 +252,7 @@ class DocumentoController extends Controller
         $turmaId = (int) $rowTurma->turma_id;
         $alunoArr = (array) $aluno;
         $alunoArr['nome_turma'] = $rowTurma->nome_turma;
+        $alunoArr['matricula'] = $rowTurma->numero ?: $alunoArr['matricula'];
 
         $unidades = DB::select(
             'SELECT id, nome_unidade FROM unidades_letivas WHERE ano_letivo = ? ORDER BY id ASC',

@@ -148,9 +148,11 @@ class DocumentosEscolaresService
     /** Anos letivos cursados, com média, frequência e resultado de cada um. */
     public function vidaEscolar(int $alunoId): array
     {
+        $numero = app(\App\Services\Matriculas\NumeroMatriculaService::class)->sqlNumeroDoAno();
         $matriculas = DB::select("
-            SELECT m.ano_letivo, m.turma_id, t.nome_turma, t.turno, t.status AS status_turma, m.status, m.data_inicio, m.data_fim
-            FROM matriculas m JOIN turmas t ON t.id = m.turma_id
+            SELECT m.ano_letivo, m.turma_id, t.nome_turma, t.turno, t.status AS status_turma, m.status, m.data_inicio, m.data_fim,
+                   $numero AS numero
+            FROM matriculas m JOIN turmas t ON t.id = m.turma_id JOIN alunos a ON a.id = m.aluno_id
             WHERE m.aluno_id = ?
             ORDER BY m.ano_letivo, m.id
         ", [$alunoId]);
@@ -164,6 +166,7 @@ class DocumentosEscolaresService
                 'turma_id' => (int) $m->turma_id,
                 'nome_turma' => $m->nome_turma,
                 'turno' => $m->turno,
+                'numero' => $m->numero,
                 'status' => $m->status,
                 'data_inicio' => $m->data_inicio,
                 'data_fim' => $m->data_fim,
@@ -251,7 +254,9 @@ class DocumentosEscolaresService
                 'medias' => $n['medias'] ?? [],
                 'media_geral' => $n['media_geral'] ?? null,
                 'frequencia' => $f && $f->dias ? round($f->presencas / $f->dias * 100, 1) : null,
-                'resultado' => $this->resultado($a['status'], $turma->status, $n, $medias['media_minima']),
+                // O resultado registrado no encerramento do ano (conselho de classe) vale mais que a conta pelas médias.
+                'resultado' => ['promovido' => 'Aprovado', 'concluiu' => 'Aprovado', 'retido' => 'Reprovado'][$a['resultado_registrado'] ?? '']
+                    ?? $this->resultado($a['status'], $turma->status, $n, $medias['media_minima']),
             ];
         }, $alunos);
 
@@ -270,9 +275,12 @@ class DocumentosEscolaresService
     /** Alunos da turma (pelas matrículas do ano; cai para turma_aluno se não houver). */
     public function alunosDaTurma(int $turmaId, int $ano, bool $incluirSaidas = false, bool $comResponsavel = false): array
     {
+        $numeros = app(\App\Services\Matriculas\NumeroMatriculaService::class);
+        $numero = $numeros->sqlNumeroDoAno();
+        $resultadoSql = $numeros->porAno() ? 'm.resultado' : 'NULL';
         $rows = DB::select("
-            SELECT a.id AS aluno_id, u.nome_completo AS nome_aluno, a.matricula, a.data_nascimento, a.sexo,
-                   m.status, m.data_fim
+            SELECT a.id AS aluno_id, u.nome_completo AS nome_aluno, $numero AS matricula, a.data_nascimento, a.sexo,
+                   m.status, m.data_fim, $resultadoSql AS resultado_registrado
             FROM matriculas m
             JOIN alunos a ON a.id = m.aluno_id
             JOIN usuarios u ON u.id = a.usuario_id
@@ -283,7 +291,7 @@ class DocumentosEscolaresService
         if (!$rows) {
             $rows = DB::select("
                 SELECT a.id AS aluno_id, u.nome_completo AS nome_aluno, a.matricula, a.data_nascimento, a.sexo,
-                       'ativa' AS status, NULL AS data_fim
+                       'ativa' AS status, NULL AS data_fim, NULL AS resultado_registrado
                 FROM turma_aluno ta JOIN alunos a ON a.id = ta.aluno_id JOIN usuarios u ON u.id = a.usuario_id
                 WHERE ta.turma_id = ?" . ($incluirSaidas ? '' : ' AND u.ativo = 1') . "
                 ORDER BY u.nome_completo

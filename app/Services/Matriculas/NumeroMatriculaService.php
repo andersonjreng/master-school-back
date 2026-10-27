@@ -77,6 +77,17 @@ class NumeroMatriculaService
         return $this->porAno() ? $linha + ['numero' => $numero] : $linha;
     }
 
+    /**
+     * SQL do número de matrícula daquele ano numa consulta que junta
+     * matriculas ($m) e alunos ($a): o número do ano, ou o atual quando a
+     * matrícula é anterior à numeração anual. Documentos de anos fechados
+     * (ata, diário, ficha) usam isto para não mostrar o número do ano novo.
+     */
+    public function sqlNumeroDoAno(string $m = 'm', string $a = 'a'): string
+    {
+        return $this->porAno() ? "COALESCE($m.numero, $a.matricula)" : "$a.matricula";
+    }
+
     /** O histórico já guarda o número de cada ano (migration 2026_10_27_100000 rodada)? */
     public function porAno(): bool
     {

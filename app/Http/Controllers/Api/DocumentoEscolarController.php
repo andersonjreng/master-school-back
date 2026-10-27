@@ -123,6 +123,10 @@ class DocumentoEscolarController extends Controller
         }
         $ano = (int) $request->query('ano_letivo');
         $registro = collect($vida)->firstWhere('ano_letivo', $ano) ?? end($vida);
+        // A declaração é de um ano: vale o número de matrícula daquele ano.
+        if (!empty($registro['numero'])) {
+            $aluno->matricula = $registro['numero'];
+        }
 
         return $this->resposta(['aluno' => $aluno, 'registro' => $registro, 'anos' => $vida]);
     }

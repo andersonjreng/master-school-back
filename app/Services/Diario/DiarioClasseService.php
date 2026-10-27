@@ -270,7 +270,9 @@ class DiarioClasseService
             ->where(fn ($q) => $q->whereNull('m.data_inicio')->orWhere('m.data_inicio', '<=', $fim))
             ->where(fn ($q) => $q->whereNull('m.data_fim')->orWhere('m.data_fim', '>=', $ini))
             ->orderBy('u.nome_completo')
-            ->get(['m.aluno_id', 'u.nome_completo', 'a.matricula', 'm.data_inicio', 'm.data_fim', 'm.status']);
+            // Número de matrícula daquele ano (o diário de um ano fechado não mostra o número do ano novo).
+            ->get(['m.aluno_id', 'u.nome_completo', DB::raw(app(\App\Services\Matriculas\NumeroMatriculaService::class)->sqlNumeroDoAno() . ' as matricula'),
+                'm.data_inicio', 'm.data_fim', 'm.status']);
 
         $alunos = [];
         foreach ($mats as $m) {
