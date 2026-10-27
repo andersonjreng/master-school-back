@@ -597,76 +597,181 @@ class DemoAlimentarService
     // Comunicação
     // ═════════════════════════════════════════════════════════════════════
 
-    /** Comunicados recentes no mural, ocorrências (algumas aguardando ciência) e recados. Só se ainda não houver no último mês. */
+    /**
+     * Comunicação viva: comunicados no mural (com leituras, confirmações e
+     * reações das famílias), ocorrências em todas as turmas (algumas
+     * aguardando ciência) e conversas de recados com respostas das famílias
+     * (algumas ainda não lidas pela escola). Cada item entra uma vez só
+     * (pelo título/assunto), então rodar de novo não duplica.
+     */
     private function comunicacao(Collection $turmas): void
     {
-        $quando = fn (string $rel) => $this->ate->copy()->setTime(now()->hour, now()->minute)->modify($rel)->format('Y-m-d H:i:s');
-        $autor = (int) (DB::table('usuarios as u')->join('usuario_funcao as uf', 'uf.usuario_id', '=', 'u.id')->join('funcoes as f', 'f.id', '=', 'uf.funcao_id')
-            ->whereIn('f.nome_funcao', [Papeis::SECRETARIA, Papeis::DIRETORIA])->where('u.ativo', 1)->value('u.id') ?: $this->admin);
-        $fundamental = $turmas->whereNull('etapa_bncc')->first();
-        $feitos = [];
+        $agora = now();
+        $quando = fn (string $rel) => $this->ate->copy()->setTime($agora->hour, $agora->minute)->modify($rel);
+        $equipe = fn (array $perfis) => DB::table('usuarios as u')->join('usuario_funcao as uf', 'uf.usuario_id', '=', 'u.id')
+            ->join('funcoes as f', 'f.id', '=', 'uf.funcao_id')->whereIn('f.nome_funcao', $perfis)->where('u.ativo', 1)->orderBy('u.id')->pluck('u.id')->all();
+        $secretaria = $equipe([Papeis::SECRETARIA])[0] ?? $this->admin;
+        $direcao = $equipe([Papeis::DIRETORIA])[0] ?? $this->admin;
+        $coordenacao = $equipe([Papeis::COORDENACAO])[0] ?? $direcao;
+        $staff = $equipe(Papeis::EQUIPE);
+        $familiasDa = fn (array $turmaIds) => DB::table('turma_aluno as ta')->join('aluno_responsavel as ar', 'ar.aluno_id', '=', 'ta.aluno_id')
+            ->join('responsaveis as r', 'r.id', '=', 'ar.responsavel_id')->join('usuarios as u', 'u.id', '=', 'r.usuario_id')
+            ->whereIn('ta.turma_id', $turmaIds)->where('u.ativo', 1)->pluck('r.usuario_id')->unique()->values()->all();
+        $todas = $turmas->pluck('id')->all();
+        $fund = $turmas->whereNull('etapa_bncc')->values();
+        $quinto = $fund->last();
+        $primeiraFund = $fund->first();
 
-        if (Schema::hasTable('mural_posts') && !DB::table('mural_posts')->where('criado_em', '>=', $this->ate->copy()->subDays(20))->exists()) {
-            $festa = $this->ate->copy()->addDays(12)->next(Carbon::SATURDAY);
-            $reuniao = $this->ate->copy()->addDays(9)->next(Carbon::THURSDAY);
-            $posts = [
-                ['familias', null, 'Cardápio da semana', "Segunda: arroz, feijão, frango assado e salada.\nTerça: macarrão à bolonhesa.\nQuarta: escondidinho de carne.\nQuinta: peixe com purê.\nSexta: estrogonofe de frango.", 0, 0, '-5 days'],
-                ['escola', null, 'Festa da Primavera — ' . $festa->locale('pt_BR')->isoFormat('D [de] MMMM'), "Convidamos todas as famílias para a nossa Festa da Primavera, das 9h às 13h.\nTeremos apresentações das turmas, barracas e brincadeiras.\nContamos com vocês!", 1, 0, '-3 days'],
-                ['familias', null, 'Reunião de pais do 4º bimestre', "A reunião de pais será na " . $reuniao->locale('pt_BR')->isoFormat('dddd, D [de] MMMM') . ", às 19h, no auditório.\nPor favor, confirme a ciência deste comunicado.", 0, 1, '-1 day'],
-                ['equipe', null, 'Fechamento do bimestre', "Professores: lançar todas as notas e registros de aula até o fim do bimestre.\nDúvidas, procurem a coordenação.", 0, 0, '-2 days'],
-            ];
-            if ($fundamental) {
-                $posts[] = ['turmas', json_encode([(int) $fundamental->id]), "Passeio ao Museu de Ciências — {$fundamental->nome_turma}", "Saída às 8h e retorno às 12h. Os alunos devem vir de uniforme e trazer lanche.\nConfirme a ciência para autorizar a participação.", 0, 1, '-4 hours'];
-            }
-            foreach ($posts as [$publico, $ts, $titulo, $texto, $fixado, $ciencia, $rel]) {
-                DB::table('mural_posts')->insert(['autor_usuario_id' => $autor, 'titulo' => $titulo, 'texto' => $texto, 'publico' => $publico, 'turmas' => $ts,
-                    'fixado' => $fixado, 'exige_ciencia' => $ciencia, 'oculto' => 0, 'criado_em' => $quando($rel), 'atualizado_em' => $quando($rel)]);
-            }
-            $feitos[] = count($posts) . ' comunicados';
+        // ── Mural ──────────────────────────────────────────────────────
+        $festa = $this->ate->copy()->addDays(10)->next(Carbon::SATURDAY);
+        $reuniao = $this->ate->copy()->addDays(8)->next(Carbon::THURSDAY);
+        $dt = fn (Carbon $d, string $f) => $d->locale('pt_BR')->isoFormat($f);
+        $posts = [
+            [$direcao, 'escola', null, 'Boas-vindas ao 4º bimestre', "Começamos a reta final do ano! Neste bimestre teremos a Semana da Leitura, a Festa da Primavera e as avaliações finais.\nContamos com a parceria de sempre das famílias.", 0, 0, '-24 days'],
+            [$coordenacao, 'escola', null, 'Semana da Leitura', "De segunda a sexta, cada turma terá um momento diário de leitura e uma visita à biblioteca.\nSe puderem, mandem um livro de casa para a troca na sexta-feira.", 0, 0, '-18 days'],
+            [$secretaria, 'familias', null, 'Atualize a carteira de vacinação', "A Secretaria de Saúde pediu que as escolas confiram a carteira de vacinação dos alunos.\nPor favor, envie uma foto da carteirinha pela Comunicação ou traga na secretaria até o fim do mês.", 0, 1, '-15 days'],
+            [$direcao, 'escola', null, 'Campanha do Agasalho', "Estamos arrecadando agasalhos e cobertores em bom estado até o dia 30.\nAs doações serão entregues a uma instituição do bairro. Obrigado pela solidariedade!", 0, 0, '-10 days'],
+            [$secretaria, 'familias', null, 'Cardápio da semana', "Segunda: arroz, feijão, frango assado e salada.\nTerça: macarrão à bolonhesa.\nQuarta: escondidinho de carne.\nQuinta: peixe com purê.\nSexta: estrogonofe de frango.", 0, 0, '-5 days'],
+            [$direcao, 'escola', null, 'Festa da Primavera — ' . $dt($festa, 'D [de] MMMM'), "Convidamos todas as famílias para a Festa da Primavera, das 9h às 13h.\nTeremos apresentações das turmas, barracas e brincadeiras. Contamos com vocês!", 1, 0, '-3 days'],
+            [$coordenacao, 'equipe', null, 'Fechamento do bimestre', "Professores: lancem todas as notas e os registros de aula até o fim do bimestre.\nQuem estiver com chamadas atrasadas, regularize ainda esta semana.", 0, 0, '-2 days'],
+            [$secretaria, 'familias', null, 'Reunião de pais do 4º bimestre', 'A reunião de pais será na ' . $dt($reuniao, 'dddd, D [de] MMMM') . ", às 19h, no auditório.\nVamos apresentar o desempenho das turmas e o calendário de provas finais. Confirme a ciência, por favor.", 0, 1, '-1 day'],
+        ];
+        if ($quinto) {
+            $posts[] = [$coordenacao, 'turmas', [(int) $quinto->id], "Simulado do {$quinto->nome_turma}", "Na próxima quarta-feira teremos o simulado de Português e Matemática, das 7h30 às 10h.\nOs alunos devem trazer lápis, borracha e caneta azul.", 0, 1, '-6 days'];
         }
-
-        if (!DB::table('ocorrencias')->where('data', '>=', $this->ate->copy()->subDays(30)->toDateString())->exists()) {
-            $modelos = [
-                ['elogio', 'info', 'Excelente participação', 'Ajudou os colegas na atividade em grupo e apresentou o trabalho com muita clareza.', 0],
-                ['tarefa', 'atencao', 'Tarefas não entregues', 'Não entregou as tarefas de casa nos últimos três dias. Pedimos o acompanhamento da família.', 1],
-                ['comportamento', 'atencao', 'Conversa durante a aula', 'Precisou ser chamado à atenção várias vezes durante a explicação.', 1],
-                ['saude', 'info', 'Mal-estar no recreio', 'Relatou dor de cabeça após o recreio; descansou na secretaria e melhorou.', 0],
-                ['atraso', 'info', 'Chegada atrasada', 'Chegou 30 minutos após o início das aulas.', 0],
-                ['disciplinar', 'grave', 'Desentendimento com colega', 'Houve um desentendimento físico no recreio. A coordenação conversou com os envolvidos.', 1],
-                ['elogio', 'info', 'Destaque na leitura', 'Leu em voz alta para a turma com ótima fluência.', 0],
-            ];
-            $n = 0;
-            foreach ($turmas->values() as $i => $t) {
-                $alunos = $this->alunosDaTurma((int) $t->id);
-                if (!$alunos || $i % 2) {
+        if ($primeiraFund) {
+            $posts[] = [$coordenacao, 'turmas', [(int) $primeiraFund->id], "Passeio ao Museu de Ciências — {$primeiraFund->nome_turma}", "Saída às 8h e retorno às 12h. Os alunos devem vir de uniforme e trazer lanche.\nConfirme a ciência para autorizar a participação.", 0, 1, '-4 hours'];
+        }
+        $novosPosts = 0;
+        foreach ($posts as [$autor, $publico, $alvo, $titulo, $texto, $fixado, $ciencia, $rel]) {
+            if (DB::table('mural_posts')->where('titulo', $titulo)->exists()) {
+                continue;
+            }
+            $em = $quando($rel);
+            $id = DB::table('mural_posts')->insertGetId(['autor_usuario_id' => $autor, 'titulo' => $titulo, 'texto' => $texto, 'publico' => $publico,
+                'turmas' => $alvo ? json_encode($alvo) : null, 'fixado' => $fixado, 'exige_ciencia' => $ciencia, 'oculto' => 0,
+                'criado_em' => $em, 'atualizado_em' => null]);
+            $leitores = match ($publico) {
+                'equipe' => $staff,
+                'turmas' => $familiasDa($alvo),
+                default => $familiasDa($todas),
+            };
+            $idade = (int) max(0, $em->diffInHours($agora));
+            $leituras = [];
+            $reacoes = [];
+            foreach ($leitores as $u) {
+                // Quanto mais antigo, mais gente já leu; uma parte confirma a ciência e reage.
+                if ($this->h("le$id:$u") % 100 >= min(92, 35 + $idade * 3)) {
                     continue;
                 }
-                [$tipo, $nivel, $titulo, $desc, $ciencia] = $modelos[$n % count($modelos)];
-                $data = $this->ate->copy()->subDays(1 + $n * 3);
-                DB::table('ocorrencias')->insert(['aluno_id' => $alunos[$this->h("oc$t->id") % count($alunos)], 'turma_id' => $t->id, 'autor_usuario_id' => $autor,
-                    'tipo' => $tipo, 'nivel' => $nivel, 'data' => $data->toDateString(), 'titulo' => $titulo, 'descricao' => $desc, 'visibilidade' => 'familia',
-                    'exige_ciencia' => $ciencia, 'ciente_em' => $ciencia && $n % 3 === 2 ? $data->copy()->addDay()->setTime(20, 0) : null,
-                    'criado_em' => $data->copy()->setTime(11, 0), 'atualizado_em' => $data->copy()->setTime(11, 0)]);
-                $n++;
+                $lido = $em->copy()->addMinutes(20 + $this->h("lm$id:$u") % max(30, min($idade * 60, 2000)))->min($agora);
+                $leituras[] = ['post_id' => $id, 'usuario_id' => $u, 'lido_em' => $lido,
+                    'ciente_em' => $ciencia && $this->h("ci$id:$u") % 100 < 70 ? $lido->copy()->addMinutes(2) : null];
+                if ($this->h("re$id:$u") % 100 < 28) {
+                    $reacoes[] = ['post_id' => $id, 'usuario_id' => $u, 'emoji' => ['👍', '❤️', '👏', '🎉', '🙏'][$this->h("em$id:$u") % 5], 'criado_em' => $lido];
+                }
             }
-            $feitos[] = "$n ocorrências";
+            foreach (array_chunk($leituras, 500) as $l) {
+                DB::table('mural_leituras')->insertOrIgnore($l);
+            }
+            foreach (array_chunk($reacoes, 500) as $r) {
+                DB::table('mural_reacoes')->insertOrIgnore($r);
+            }
+            $novosPosts++;
         }
 
-        if (Schema::hasTable('recados_conversas') && $fundamental && !DB::table('recados_conversas')->where('criado_em', '>=', $this->ate->copy()->subDays(20))->exists()) {
-            $prof = DB::table('turma_professor_disciplina as v')->join('professores as p', 'p.id', '=', 'v.professor_id')->where('v.turma_id', $fundamental->id)->value('p.usuario_id');
-            $alunos = $this->alunosDaTurma((int) $fundamental->id);
-            foreach ([['Tarefa de Matemática', 'O caderno de Matemática ficou na escola hoje. Pode conferir com ele(a) a tarefa da página 42? Obrigada!', '-3 hours'],
-                ['Material para a aula de Arte', 'Amanhã vamos usar tinta guache. Se possível, mandar uma camiseta velha para proteger o uniforme.', '-1 day']] as $i => [$assunto, $texto, $rel]) {
-                if (!$prof || !isset($alunos[$i])) {
-                    break;
+        // Comunicados nunca editados não ficam com a marca "editado" (versões antigas do comando gravavam atualizado_em).
+        DB::table('mural_posts')->whereColumn('atualizado_em', 'criado_em')->update(['atualizado_em' => null]);
+
+        // ── Ocorrências ────────────────────────────────────────────────
+        $modelos = [
+            ['elogio', 'info', 'Excelente participação', 'Ajudou os colegas na atividade em grupo e apresentou o trabalho com muita clareza.'],
+            ['tarefa', 'atencao', 'Tarefas não entregues', 'Não entregou as tarefas de casa nos últimos três dias. Pedimos o acompanhamento da família.'],
+            ['comportamento', 'atencao', 'Conversa durante a aula', 'Precisou ser chamado(a) à atenção várias vezes durante a explicação.'],
+            ['saude', 'info', 'Mal-estar no recreio', 'Relatou dor de cabeça após o recreio; descansou na secretaria e melhorou. A família foi avisada por telefone.'],
+            ['atraso', 'info', 'Chegada atrasada', 'Chegou 30 minutos após o início das aulas.'],
+            ['disciplinar', 'grave', 'Desentendimento com colega', 'Houve um desentendimento físico no recreio. A coordenação conversou com os envolvidos e as famílias.'],
+            ['elogio', 'info', 'Destaque na leitura', 'Leu em voz alta para a turma com ótima fluência e entonação.'],
+            ['outro', 'info', 'Esqueceu o material', 'Veio sem o material de Arte; a professora emprestou para não perder a atividade.'],
+            ['comportamento', 'info', 'Ótima evolução', 'Tem participado mais das aulas e respeitado os combinados da turma. Parabéns!'],
+            ['saude', 'atencao', 'Febre durante a aula', 'Teve febre (38 °C) e precisou ser buscado(a) mais cedo. Pedimos que retorne só sem febre.'],
+        ];
+        $novasOc = 0;
+        foreach ($turmas->values() as $i => $t) {
+            $alunos = $this->alunosDaTurma((int) $t->id);
+            $autor = DB::table('turma_professor_disciplina as v')->join('professores as p', 'p.id', '=', 'v.professor_id')
+                ->where('v.turma_id', $t->id)->value('p.usuario_id') ?: $coordenacao;
+            for ($k = 0; $k < 2 && $alunos; $k++) {
+                [$tipo, $nivel, $titulo, $desc] = $modelos[($i * 2 + $k) % count($modelos)];
+                if (DB::table('ocorrencias')->where('turma_id', $t->id)->where('titulo', $titulo)->exists()) {
+                    continue;
                 }
-                $id = DB::table('recados_conversas')->insertGetId(['aluno_id' => $alunos[$i], 'escola_usuario_id' => $prof, 'assunto' => $assunto, 'criado_por' => $prof,
-                    'criado_em' => $quando($rel), 'ultima_mensagem_em' => $quando($rel), 'encerrada' => 0]);
-                DB::table('recados_mensagens')->insert(['conversa_id' => $id, 'autor_usuario_id' => $prof, 'lado' => 'escola', 'texto' => $texto, 'criado_em' => $quando($rel)]);
+                $data = $this->ate->copy()->subDays(1 + ($i * 5 + $k * 11) % 28);
+                $ciencia = $nivel !== 'info' ? 1 : 0;
+                DB::table('ocorrencias')->insert(['aluno_id' => $alunos[$this->h("oc$t->id:$k") % count($alunos)], 'turma_id' => $t->id,
+                    'autor_usuario_id' => $nivel === 'grave' ? $coordenacao : $autor, 'tipo' => $tipo, 'nivel' => $nivel, 'data' => $data->toDateString(),
+                    'titulo' => $titulo, 'descricao' => $desc, 'visibilidade' => $this->h("vi$t->id:$k") % 6 === 0 ? 'interna' : 'familia',
+                    'exige_ciencia' => $ciencia, 'ciente_em' => $ciencia && $this->h("oci$t->id:$k") % 2 ? $data->copy()->addDay()->setTime(20, 15) : null,
+                    'criado_em' => $data->copy()->setTime(11, 0), 'atualizado_em' => $data->copy()->setTime(11, 0)]);
+                $novasOc++;
             }
-            $feitos[] = 'recados';
         }
-        $this->dizer('comunicação: ' . ($feitos ? implode(', ', $feitos) : 'já havia do último mês'));
+
+        // ── Recados (conversas privadas escola × família) ─────────────
+        $roteiros = [
+            ['Tarefa de Matemática', [['escola', 'Olá! O caderno de Matemática ficou na escola hoje. Pode conferir a tarefa da página 42 em casa?', '-1 day 10:00'],
+                ['familia', 'Oi, professora! Vamos fazer hoje à noite. Obrigada pelo aviso!', '-1 day 19:40']]],
+            ['Material para a aula de Arte', [['escola', 'Amanhã vamos usar tinta guache. Se possível, mandar uma camiseta velha para proteger o uniforme.', '-2 days 14:00']]],
+            ['Consulta médica na quinta', [['familia', 'Bom dia! Na quinta ele(a) vai sair às 10h para uma consulta médica. Eu mesma venho buscar.', '-3 days 07:30'],
+                ['escola', 'Bom dia! Tudo certo, vamos avisar a portaria. Obrigada por comunicar.', '-3 days 08:15'], ['familia', 'Obrigada! Levo o atestado na sexta.', '-3 days 08:20']]],
+            ['Dificuldade em Português', [['escola', 'Tenho notado dificuldade na interpretação de textos. Que tal lermos juntos 15 minutos por dia em casa?', '-5 days 13:00'],
+                ['familia', 'Obrigado pelo retorno. Vamos começar hoje. Tem algum livro que a senhora indica?', '-4 days 20:10'],
+                ['escola', 'Indico "O Pequeno Príncipe" ou os gibis da Turma da Mônica. O importante é criar o hábito!', '-4 days 21:00']]],
+            ['Autorização para o passeio', [['familia', 'Oi! Não consegui confirmar no mural. Ele(a) está autorizado(a) a ir ao passeio, tá?', '-5 hours']]],
+            ['Uniforme de Educação Física', [['escola', 'Lembrando que nas aulas de Educação Física é obrigatório o tênis. Hoje veio de sandália.', '-6 days 11:00'],
+                ['familia', 'Desculpe, o tênis estava molhado. Amanhã vai certinho!', '-6 days 18:30']]],
+        ];
+        $novasConv = 0;
+        foreach ($turmas->values() as $i => $t) {
+            $alunos = $this->alunosDaTurma((int) $t->id);
+            $prof = DB::table('turma_professor_disciplina as v')->join('professores as p', 'p.id', '=', 'v.professor_id')
+                ->where('v.turma_id', $t->id)->value('p.usuario_id') ?: $secretaria;
+            foreach ([0, 1] as $k) {
+                if (!$alunos || $i % 2 && $k) {
+                    continue;
+                }
+                [$assunto, $msgs] = $roteiros[($i + $k * 3) % count($roteiros)];
+                $aluno = $alunos[$this->h("rc$t->id:$k") % count($alunos)];
+                if (DB::table('recados_conversas')->where('aluno_id', $aluno)->where('assunto', $assunto)->exists()) {
+                    continue;
+                }
+                $familia = (int) DB::table('aluno_responsavel as ar')->join('responsaveis as r', 'r.id', '=', 'ar.responsavel_id')
+                    ->where('ar.aluno_id', $aluno)->orderByDesc('ar.principal')->orderBy('r.id')->value('r.usuario_id');
+                if (!$familia) {
+                    continue;
+                }
+                $primeira = $quando($msgs[0][2]);
+                $ultima = $quando(end($msgs)[2]);
+                $conv = DB::table('recados_conversas')->insertGetId(['aluno_id' => $aluno, 'escola_usuario_id' => $prof, 'assunto' => $assunto,
+                    'criado_por' => $msgs[0][0] === 'escola' ? $prof : $familia, 'criado_em' => $primeira, 'ultima_mensagem_em' => $ultima, 'encerrada' => 0]);
+                $ultimaId = [];
+                foreach ($msgs as [$lado, $texto, $rel]) {
+                    $id = DB::table('recados_mensagens')->insertGetId(['conversa_id' => $conv, 'autor_usuario_id' => $lado === 'escola' ? $prof : $familia,
+                        'lado' => $lado, 'texto' => $texto, 'criado_em' => $quando($rel)]);
+                    $ultimaId[$lado] = $id;
+                }
+                // Cada lado leu até a própria última mensagem; a família às vezes já leu a resposta, a escola nem sempre (fica "não lida").
+                $ultimoGeral = max($ultimaId);
+                foreach (['escola' => $prof, 'familia' => $familia] as $lado => $u) {
+                    $leu = end($msgs)[0] === $lado || ($lado === 'familia' && $this->h("rl$conv") % 3 > 0) ? $ultimoGeral : ($ultimaId[$lado] ?? null);
+                    if ($leu) {
+                        DB::table('recados_leituras')->insertOrIgnore(['conversa_id' => $conv, 'usuario_id' => $u, 'ultima_lida_id' => $leu, 'lido_em' => $ultima]);
+                    }
+                }
+                $novasConv++;
+            }
+        }
+        $this->dizer("comunicação: +$novosPosts comunicados (com leituras, confirmações e reações), +$novasOc ocorrências, +$novasConv conversas de recados");
     }
 
     // ═════════════════════════════════════════════════════════════════════
