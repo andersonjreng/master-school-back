@@ -313,7 +313,7 @@ final class ManualSistema
                     . "horário da turma (Manhã, Tarde...) e os dias. 3. Arraste as disciplinas da lateral para a grade; arraste uma aula para outra casa "
                     . "para trocar; toque numa aula para mudar o professor, pôr a sala ou tirar. O número ao lado da disciplina é aulas na semana / meta "
                     . "(toque para mudar a meta). O triângulo indica professor em duas turmas no mesmo horário. 4. 'Avisar famílias' manda aviso no app.\n"
-                    . "Horários de aula e intervalo (o 'sinal'): ícone de engrenagem > Horários do sinal — um horário serve para várias turmas.\n"
+                    . "Horários de aula e intervalo (o 'sinal'): botão 'Horários e intervalos' (no modo Editar) — um horário serve para várias turmas; 'Montar rápido' cria as faixas pelo início, número de aulas, duração (40, 45, 50, 60 min) e intervalos (10, 15, 20, 30 min); mudar a duração de um intervalo empurra os horários seguintes.\n"
                     . "'Adicionar à agenda' (ícone de calendário) baixa as aulas para o calendário do celular, sem os feriados; o ícone de impressora imprime a grade.",
             ],
 
