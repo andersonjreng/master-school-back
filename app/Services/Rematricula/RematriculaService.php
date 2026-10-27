@@ -1021,9 +1021,18 @@ class RematriculaService
      * Boleto/Pix no Asaas, fora da transação: se o Asaas falhar, o contrato
      * fica feito e a família paga pela emissão automática ou na secretaria.
      */
+    /** Dados de demonstração (demo:alimentar): rematrícula sem emitir cobrança no Asaas. */
+    public function semCobrancaExterna(): static
+    {
+        $this->semAsaas = true;
+        return $this;
+    }
+
+    private bool $semAsaas = false;
+
     private function emitirBoleto(?int $parcelaId, int $usuarioId): bool
     {
-        if (!$parcelaId || !$this->financeiro->modoAsaas()) {
+        if (!$parcelaId || $this->semAsaas || !$this->financeiro->modoAsaas()) {
             return false;
         }
         try {
