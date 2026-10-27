@@ -314,6 +314,18 @@ class RematriculaService
                 'p.status as cobranca_status'])
             ->keyBy('aluno_id');
 
+        // Desconto combinado com a família (aparece no aluno até a rematrícula ser feita).
+        $combinados = Schema::hasTable('rematricula_descontos')
+            ? DB::table('rematricula_descontos as rd')->leftJoin('descontos_padrao as dp', 'dp.id', '=', 'rd.desconto_padrao_id')
+                ->where('rd.campanha_id', $id)->get(['rd.aluno_id', 'dp.nome as padrao', 'rd.extra_tipo', 'rd.extra_valor', 'rd.descricao'])
+                ->mapWithKeys(fn ($d) => [(int) $d->aluno_id => implode(' + ', array_filter([
+                    $d->padrao,
+                    $d->extra_tipo ? ($d->extra_tipo === 'percentual'
+                        ? rtrim(rtrim(number_format((float) $d->extra_valor, 2, ',', '.'), '0'), ',') . '%'
+                        : 'R$ ' . number_format((float) $d->extra_valor, 2, ',', '.')) . ($d->descricao ? " ({$d->descricao})" : '') : null,
+                ]))])
+            : collect();
+
         // Quem saiu no encerramento do ano (não renovou / formando) continua listado: pode voltar (rematrícula tardia).
         $saidas = $this->numeros->porAno() ? DB::table('matriculas as m')->join('alunos as a', 'a.id', '=', 'm.aluno_id')
             ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
@@ -343,10 +355,11 @@ class RematriculaService
             if ($naTurma->isEmpty()) {
                 continue;
             }
-            $alunos = $naTurma->sortBy('nome', SORT_NATURAL | SORT_FLAG_CASE)->map(function ($a) use ($respostas) {
+            $alunos = $naTurma->sortBy('nome', SORT_NATURAL | SORT_FLAG_CASE)->map(function ($a) use ($respostas, $combinados) {
                 $r = $respostas[$a->aluno_id] ?? null;
                 $ativa = $r && $r->status !== 'cancelada';
                 return [
+                    'desconto_combinado' => $combinados[(int) $a->aluno_id] ?? null,
                     // Saiu no encerramento do ano sem rematrícula: 'nao_renovou' | 'concluiu'.
                     'saiu' => !($ativa && in_array($r->status, ['confirmada', 'aguardando_pagamento'], true)) ? ($a->saiu ?? null) : null,
                     'aluno_id' => (int) $a->aluno_id, 'nome' => $a->nome, 'status' => $ativa ? $r->status : 'pendente',
@@ -523,7 +536,7 @@ class RematriculaService
                 'responsavel'    => $pagador,
                 // Sem CPF/endereço válidos o Asaas não emite o boleto: a tela avisa antes do aceite.
                 'pendencias_cadastro' => $pagador ? $this->pendenciasCadastro($pagador) : [],
-                'planos'         => $this->planosComDesconto($c, (int) $dep->destino_id),
+                'planos'         => $this->planosComDesconto($c, (int) $dep->destino_id, (int) $dep->aluno_id),
                 'ja_tem_contrato' => $this->matriculas->jaMatriculado((int) $dep->aluno_id, (string) $c->ano_destino),
                 'rematricula'    => $r && $r->status !== 'cancelada' ? $this->formatarRematricula($r) : null,
             ];
@@ -564,9 +577,10 @@ class RematriculaService
 
         $hoje = Carbon::today();
         $vencimento = $hoje->copy()->addDays((int) $c->prazo_pagamento_dias)->toDateString();
-        $antecipado = $this->descontoVigente($c) !== null;
+        $desc = $this->descontosDoAluno($c, $alunoId);
+        $antecipado = $desc['antecipado'];
 
-        $resultado = DB::transaction(function () use ($c, $ctx, $alunoId, $planoId, $usuarioId, $html, $hash, $ip, $userAgent, $vencimento, $antecipado) {
+        $resultado = DB::transaction(function () use ($c, $ctx, $alunoId, $planoId, $usuarioId, $html, $hash, $ip, $userAgent, $vencimento, $antecipado, $desc) {
             // Trava a linha do aluno nesta campanha: dois cliques ao mesmo tempo não geram dois contratos.
             $existente = DB::table('rematriculas')->where('campanha_id', $c->id)->where('aluno_id', $alunoId)->lockForUpdate()->first();
             if ($existente && in_array($existente->status, ['aguardando_pagamento', 'confirmada'], true)) {
@@ -576,9 +590,11 @@ class RematriculaService
             $mf = $this->matriculas->criar($usuarioId, [
                 'aluno_id' => $alunoId, 'plano_id' => $planoId, 'ano_letivo' => (string) $c->ano_destino,
                 'data_inicio' => $this->contratos->dataInicioSugerida((int) $c->ano_destino),
-                'desconto_extra_tipo' => $antecipado ? $c->desconto_tipo : null,
-                'desconto_extra_valor' => $antecipado ? (float) $c->desconto_valor : null,
-                'desconto_extra_descricao' => $antecipado ? 'Rematrícula antecipada' : '',
+                // Mesmos descontos mostrados no plano e no contrato que a família leu (combinado e/ou antecipado).
+                'desconto_padrao_id' => $desc['padrao']['id'] ?? null,
+                'desconto_extra_tipo' => $desc['extra']['tipo'] ?? null,
+                'desconto_extra_valor' => $desc['extra']['valor'] ?? null,
+                'desconto_extra_descricao' => $desc['extra']['descricao'] ?? '',
                 'observacoes' => "Rematrícula online {$c->ano_destino} — contrato aceito pelo responsável no app.",
             ]);
 
@@ -609,6 +625,76 @@ class RematriculaService
 
         $r = DB::table('rematriculas')->where('id', $resultado['id'])->first();
         return $this->formatarRematricula($r) + ['boleto_emitido' => $boleto];
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Secretaria: desconto combinado com a família (antes da rematrícula)
+    // ═════════════════════════════════════════════════════════════════════
+
+    /** Desconto combinado do aluno nesta campanha e, para comparar, o que ele teve no ano anterior. */
+    public function descontoCombinado(int $campanhaId, int $alunoId): array
+    {
+        $c = DB::table('rematricula_campanhas')->where('id', $campanhaId)->first();
+        if (!$c) {
+            throw new \DomainException('Rematrícula não encontrada.');
+        }
+        $d = Schema::hasTable('rematricula_descontos')
+            ? DB::table('rematricula_descontos')->where('campanha_id', $campanhaId)->where('aluno_id', $alunoId)->first() : null;
+        return [
+            'combinado' => $d ? [
+                'desconto_padrao_id' => $d->desconto_padrao_id ? (int) $d->desconto_padrao_id : null,
+                'extra_tipo' => $d->extra_tipo, 'extra_valor' => $d->extra_valor !== null ? (float) $d->extra_valor : null,
+                'descricao' => $d->descricao,
+            ] : null,
+            'texto' => $this->descontosDoAluno($c, $alunoId)['texto'],
+            'anterior' => $this->descontoAnterior($alunoId, (int) $c->ano_destino - 1),
+            'desconto_vigente' => $this->descontoVigente($c),
+        ];
+    }
+
+    /** @throws \DomainException */
+    public function salvarDescontoCombinado(int $campanhaId, int $alunoId, array $d, int $usuarioId): void
+    {
+        if (!DB::table('rematricula_campanhas')->where('id', $campanhaId)->exists()) {
+            throw new \DomainException('Rematrícula não encontrada.');
+        }
+        $feita = DB::table('rematriculas')->where('campanha_id', $campanhaId)->where('aluno_id', $alunoId)
+            ->whereIn('status', ['aguardando_pagamento', 'confirmada'])->exists();
+        if ($feita) {
+            throw new \DomainException('A rematrícula deste aluno já foi feita: o desconto não muda o contrato gerado. Para trocar, cancele e refaça a rematrícula.');
+        }
+        $padraoId = !empty($d['desconto_padrao_id']) ? (int) $d['desconto_padrao_id'] : null;
+        if ($padraoId && !DB::table('descontos_padrao')->where('id', $padraoId)->where('ativo', 1)->exists()) {
+            throw new \DomainException('Desconto padrão inválido.');
+        }
+        $tipo = $d['extra_tipo'] ?? null;
+        $valor = $tipo ? round((float) ($d['extra_valor'] ?? 0), 2) : null;
+        if ($tipo !== null && (!in_array($tipo, ['percentual', 'valor'], true) || $valor <= 0 || ($tipo === 'percentual' && $valor > 100))) {
+            throw new \DomainException('Desconto extra: informe o tipo e um valor válido (percentual até 100%).');
+        }
+        if (!$padraoId && !$tipo) {
+            $this->removerDescontoCombinado($campanhaId, $alunoId);
+            return;
+        }
+        DB::table('rematricula_descontos')->updateOrInsert(
+            ['campanha_id' => $campanhaId, 'aluno_id' => $alunoId],
+            ['desconto_padrao_id' => $padraoId, 'extra_tipo' => $tipo, 'extra_valor' => $valor,
+                'descricao' => $tipo ? mb_substr(trim((string) ($d['descricao'] ?? '')) ?: 'Desconto combinado', 0, 200) : null,
+                'criado_por' => $usuarioId, 'atualizado_em' => now()]
+        );
+    }
+
+    public function removerDescontoCombinado(int $campanhaId, int $alunoId): void
+    {
+        DB::table('rematricula_descontos')->where('campanha_id', $campanhaId)->where('aluno_id', $alunoId)->delete();
+    }
+
+    /** Descontos do contrato do aluno no ano (ex.: "10% (Irmãos)"), "sem desconto", ou null se não teve contrato. */
+    private function descontoAnterior(int $alunoId, int $ano): ?string
+    {
+        $mfId = DB::table('matriculas_financeiras')->where('aluno_id', $alunoId)->where('ano_letivo', (string) $ano)
+            ->whereIn('status', ['ativa', 'concluida'])->orderByDesc('id')->value('id');
+        return $mfId ? $this->textoDescontos((int) $mfId) : null;
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -653,6 +739,9 @@ class RematriculaService
             'pagador' => $pagador,
             'pendencias_cadastro' => $pagador ? $this->pendenciasCadastro($pagador) : ['responsável financeiro'],
             'contrato_existente' => $contrato ? ['id' => (int) $contrato->id, 'plano' => $contrato->plano] : null,
+            // Pré-preenche os descontos: o combinado com a família (ou o antecipado) e mostra o do ano anterior para comparar.
+            'descontos' => $this->descontosDoAluno($c, $alunoId),
+            'desconto_anterior' => $this->descontoAnterior($alunoId, $ano - 1),
             'data_inicio' => $this->contratos->dataInicioSugerida($ano),
             'numero_sugerido' => $r->numero_matricula ?? $this->numeros->sugerir($ano),
             'rematricula' => $r && $r->status !== 'cancelada' ? $this->formatarRematricula($r) : null,
@@ -1094,7 +1183,7 @@ class RematriculaService
         if (!$v['eh_pagador']) {
             throw new \DomainException('Só o responsável financeiro do aluno pode aceitar o contrato.');
         }
-        $plano = collect($this->planosComDesconto($c, $v['turma_destino_id']))->firstWhere('id', $planoId);
+        $plano = collect($this->planosComDesconto($c, $v['turma_destino_id'], $alunoId))->firstWhere('id', $planoId);
         if (!$plano) {
             throw new \DomainException('Escolha um dos planos da turma.');
         }
@@ -1111,33 +1200,74 @@ class RematriculaService
         ]];
     }
 
-    /** Planos da turma do ano novo com o desconto antecipado já aplicado (mesma conta do contrato). */
-    private function planosComDesconto(object $c, int $turmaDestinoId): array
+    /**
+     * Planos da turma do ano novo com os descontos do aluno já aplicados —
+     * mesma conta de MatriculaFinanceiraService::criar (desconto padrão +
+     * extra sobre a parcela, nunca abaixo de zero).
+     */
+    private function planosComDesconto(object $c, int $turmaDestinoId, ?int $alunoId = null): array
     {
         $planos = $this->contratos->planosPorTurma([$turmaDestinoId])[$turmaDestinoId] ?? [];
-        $desc = $this->descontoVigente($c);
+        $desc = $this->descontosDoAluno($c, $alunoId);
         $diaVenc = DB::table('planos_pagamento')->whereIn('id', array_column($planos, 'id') ?: [0])->pluck('dia_vencimento', 'id');
 
         return array_map(function ($p) use ($desc, $diaVenc) {
             $parcela = $p['valor_parcela'];
-            $comDesconto = $parcela;
-            $texto = null;
-            if ($desc) {
-                $abate = $desc['tipo'] === 'percentual' ? $parcela * $desc['valor'] / 100 : $desc['valor'] / max(1, $p['numero_parcelas']);
-                $comDesconto = round(max(0, $parcela - round($abate, 2)), 2);
-                $texto = $desc['tipo'] === 'percentual'
-                    ? rtrim(rtrim(number_format($desc['valor'], 2, ',', '.'), '0'), ',') . '% de rematrícula antecipada'
-                    : 'R$ ' . number_format($desc['valor'], 2, ',', '.') . ' de rematrícula antecipada';
+            $n = max(1, (int) $p['numero_parcelas']);
+            $abate = 0.0;
+            foreach (array_filter([$desc['padrao'], $desc['extra']]) as $d) {
+                $abate += $d['tipo'] === 'percentual' ? $parcela * $d['valor'] / 100 : $d['valor'] / $n;
             }
+            $comDesconto = round($parcela - min(round($abate, 2), $parcela), 2);
             // array_merge (e não +): os valores com desconto substituem os do plano.
             return array_merge($p, [
                 'dia_vencimento' => (int) ($diaVenc[$p['id']] ?? 10),
                 'valor_parcela_original' => $parcela,
                 'valor_parcela' => $comDesconto,
                 'valor_total' => round($comDesconto * $p['numero_parcelas'], 2),
-                'desconto_texto' => $texto,
+                'desconto_texto' => $desc['texto'],
             ]);
         }, $planos);
+    }
+
+    /**
+     * Descontos que o contrato do ano novo do aluno recebe: o combinado com a
+     * família (se houver) e o antecipado da campanha. O desconto padrão
+     * combinado soma com o antecipado; o extra combinado o substitui (o
+     * contrato tem um só desconto extra).
+     *
+     * @return array{padrao: ?array, extra: ?array, antecipado: bool, combinado: bool, texto: ?string}
+     */
+    private function descontosDoAluno(object $c, ?int $alunoId): array
+    {
+        $comb = $alunoId && Schema::hasTable('rematricula_descontos')
+            ? DB::table('rematricula_descontos')->where('campanha_id', $c->id)->where('aluno_id', $alunoId)->first() : null;
+        $padrao = $comb && $comb->desconto_padrao_id
+            ? DB::table('descontos_padrao')->where('id', $comb->desconto_padrao_id)->where('ativo', 1)->first(['id', 'nome', 'tipo', 'valor']) : null;
+        $antecipado = $this->descontoVigente($c);
+
+        $extra = null;
+        if ($comb && $comb->extra_tipo && (float) $comb->extra_valor > 0) {
+            $extra = ['tipo' => $comb->extra_tipo, 'valor' => (float) $comb->extra_valor, 'descricao' => $comb->descricao ?: 'Desconto combinado'];
+        } elseif ($antecipado) {
+            $extra = ['tipo' => $antecipado['tipo'], 'valor' => $antecipado['valor'], 'descricao' => 'Rematrícula antecipada'];
+        }
+
+        $fmt = fn ($tipo, $valor) => $tipo === 'percentual'
+            ? rtrim(rtrim(number_format((float) $valor, 2, ',', '.'), '0'), ',') . '%'
+            : 'R$ ' . number_format((float) $valor, 2, ',', '.');
+        $partes = array_filter([
+            $padrao ? $fmt($padrao->tipo, $padrao->valor) . " ({$padrao->nome})" : null,
+            $extra ? $fmt($extra['tipo'], $extra['valor']) . " ({$extra['descricao']})" : null,
+        ]);
+
+        return [
+            'padrao' => $padrao ? ['id' => (int) $padrao->id, 'nome' => $padrao->nome, 'tipo' => $padrao->tipo, 'valor' => (float) $padrao->valor] : null,
+            'extra' => $extra,
+            'antecipado' => $extra !== null && !($comb && $comb->extra_tipo && (float) $comb->extra_valor > 0),
+            'combinado' => (bool) ($padrao || ($comb && $comb->extra_tipo && (float) $comb->extra_valor > 0)),
+            'texto' => $partes ? implode(' + ', $partes) : null,
+        ];
     }
 
     /** Desconto antecipado valendo hoje (ou null). */

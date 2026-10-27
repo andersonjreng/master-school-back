@@ -256,7 +256,7 @@ final class ManualSistema
             [
                 'id' => 'rematricula-escola', 'area' => 'Secretaria', 'titulo' => 'Abrir e acompanhar a rematrícula (online e na secretaria)',
                 'menu' => 'Secretaria > Rematrícula', 'acesso' => ['pode' => ['rematricula.gerenciar']],
-                'palavras' => 'rematricula renovacao matricula ano que vem proximo ano contrato aceite campanha desconto antecipado taxa matricula presencial balcao secretaria garantir vaga numero de matricula novo',
+                'palavras' => 'rematricula renovacao matricula ano que vem proximo ano contrato aceite campanha desconto antecipado taxa matricula presencial balcao secretaria garantir vaga numero de matricula novo desconto combinado desconto individual desconto de um aluno bolsa tirar desconto',
                 'passos' => "Antes: crie as turmas do ano novo (Parametrizações > Ano Letivo) e vincule um plano a cada uma (Financeiro > Contratos > Planos).\n"
                     . "1. Secretaria > Rematrícula > 'Nova rematrícula'.\n2. Ano e período; para qual turma do ano novo vai cada turma atual (é só a sugestão — "
                     . "cada aluno pode ir para outra); o que a família paga na hora (1ª parcela, taxa de matrícula ou nada) e o prazo; desconto para quem "
@@ -265,6 +265,11 @@ final class ManualSistema
                     . "do ano novo, o plano e o desconto (como num contrato novo) > 'Recebido agora' (dinheiro, Pix, cartão — gera o recibo) ou 'Pagar depois' "
                     . "(boleto/Pix no Asaas) > 'Rematricular' > 'Imprimir contrato' para a família assinar. Bolsa integral ou cobrança fora do sistema: "
                     . "'Sem cobrança neste ano' (vaga sem contrato). Funciona também depois de encerrar a campanha.\n"
+                    . "Desconto só para um aluno (ex.: 10% combinado com a diretoria): no acompanhamento, toque no ícone de % do aluno > desconto "
+                    . "padrão e/ou extra > Salvar. Vale quando a família faz pelo app (plano e contrato já saem com ele) e vem preenchido na secretaria. "
+                    . "O padrão soma com o desconto antecipado da campanha; o extra fica no lugar dele. A tela mostra o desconto que o aluno teve no "
+                    . "ano anterior — o contrato novo não herda nada: quem tinha desconto e não terá mais é só não marcar. Depois da rematrícula feita, "
+                    . "para mudar o desconto é preciso cancelar e refazer.\n"
                     . "Só segue para o ano novo quem é rematriculado. A rematrícula garante a vaga: gera o contrato do ano novo e já reserva o número de "
                     . "matrícula do ano (ex.: 2027001). O aluno continua na turma atual até o encerramento do ano (Secretaria > Encerramento do Ano), "
                     . "quando muda de turma e passa a usar o número novo. Aluno que saiu no encerramento (não renovou / formado) e voltou: aparece no "

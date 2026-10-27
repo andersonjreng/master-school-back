@@ -494,6 +494,9 @@ Route::prefix('rematricula')->middleware('max.jwt')->group(function () {
         Route::get('/turmas', [RematriculaController::class, 'turmas']);
         Route::get('/modelo-contrato', [RematriculaController::class, 'modelo']);
         Route::post('/previa-contrato', [RematriculaController::class, 'previa']);
+        Route::get('/campanhas/{id}/descontos/{alunoId}', [RematriculaController::class, 'descontoCombinado'])->whereNumber(['id', 'alunoId']);
+        Route::put('/campanhas/{id}/descontos/{alunoId}', [RematriculaController::class, 'salvarDescontoCombinado'])->whereNumber(['id', 'alunoId']);
+        Route::delete('/campanhas/{id}/descontos/{alunoId}', [RematriculaController::class, 'removerDescontoCombinado'])->whereNumber(['id', 'alunoId']);
         Route::get('/campanhas/{id}/presencial/{alunoId}', [RematriculaController::class, 'opcoesPresencial'])->whereNumber(['id', 'alunoId']);
         Route::post('/campanhas/{id}/presencial/{alunoId}', [RematriculaController::class, 'presencial'])->whereNumber(['id', 'alunoId']);
         Route::post('/{id}/cancelar', [RematriculaController::class, 'cancelar'])->whereNumber('id');

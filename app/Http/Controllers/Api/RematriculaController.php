@@ -124,6 +124,34 @@ class RematriculaController extends Controller
         return $c ? $this->paginaContrato($c) : response()->json(['error' => 'Contrato não encontrado.'], 404);
     }
 
+    public function descontoCombinado(int $id, int $alunoId): JsonResponse
+    {
+        try {
+            return response()->json(['data' => $this->svc->descontoCombinado($id, $alunoId)]);
+        } catch (\DomainException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+    }
+
+    public function salvarDescontoCombinado(Request $request, int $id, int $alunoId): JsonResponse
+    {
+        $usuario = $request->attributes->get('max_user');
+        try {
+            $this->svc->salvarDescontoCombinado($id, $alunoId, $request->all(), (int) ($usuario->id ?? 0));
+        } catch (\DomainException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+        $this->registrar($request, 'REMATRICULA_DESCONTO', "Desconto combinado da rematrícula (aluno #$alunoId)", ['aluno_id' => $alunoId] + $request->only(['desconto_padrao_id', 'extra_tipo', 'extra_valor']));
+        return response()->json(['success' => true, 'data' => $this->svc->descontoCombinado($id, $alunoId)]);
+    }
+
+    public function removerDescontoCombinado(Request $request, int $id, int $alunoId): JsonResponse
+    {
+        $this->svc->removerDescontoCombinado($id, $alunoId);
+        $this->registrar($request, 'REMATRICULA_DESCONTO', "Desconto combinado da rematrícula removido (aluno #$alunoId)", ['aluno_id' => $alunoId]);
+        return response()->json(['success' => true]);
+    }
+
     public function opcoesPresencial(int $id, int $alunoId): JsonResponse
     {
         try {
