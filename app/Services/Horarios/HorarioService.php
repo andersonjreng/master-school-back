@@ -259,22 +259,88 @@ class HorarioService
     public function mover(int $turmaId, array $de, array $para, int $usuarioId): array
     {
         $this->validarCasa($turmaId, (int) $para['dia'], (int) $para['faixa_id']);
-        DB::transaction(function () use ($turmaId, $de, $para) {
-            $q = fn ($c) => DB::table('horario_aulas')->where('turma_id', $turmaId)->where('dia_semana', (int) $c['dia'])->where('faixa_id', (int) $c['faixa_id']);
-            $origem = $q($de)->lockForUpdate()->first();
-            if (!$origem) {
-                throw new \DomainException('A aula não está mais nesse horário. Atualize a tela.');
-            }
-            $destino = $q($para)->lockForUpdate()->first();
-            // Troca sem violar o UNIQUE (turma, dia, faixa): a origem sai do caminho primeiro.
-            DB::table('horario_aulas')->where('id', $origem->id)->update(['dia_semana' => 0]);
-            if ($destino) {
-                DB::table('horario_aulas')->where('id', $destino->id)->update(['dia_semana' => (int) $de['dia'], 'faixa_id' => (int) $de['faixa_id']]);
-            }
-            DB::table('horario_aulas')->where('id', $origem->id)->update(['dia_semana' => (int) $para['dia'], 'faixa_id' => (int) $para['faixa_id']]);
-        });
+        DB::transaction(fn () => $this->trocarCasas($turmaId, $de, $para));
         $this->tocar($turmaId, $usuarioId);
         return $this->grade($turmaId);
+    }
+
+    /**
+     * Aplica uma sequência de trocas (sugestão do Max ou o "desfazer" dela).
+     * Cada troca confere que as aulas ainda estão onde estavam quando a
+     * sugestão foi feita; se o quadro mudou, nada é gravado. Fora o desfazer,
+     * o total de choques do ano não pode aumentar. Devolve as trocas que
+     * desfazem esta.
+     *
+     * @param array<int, array{turma_id: int, de: array, para: array, origem_id: int, destino_id: ?int}> $ops
+     * @throws \DomainException
+     */
+    public function aplicarTrocas(array $ops, int $usuarioId, bool $desfazer = false): array
+    {
+        if (!$ops) {
+            throw new \DomainException('Nada para aplicar.');
+        }
+        $turmas = array_values(array_unique(array_map(fn ($o) => (int) $o['turma_id'], $ops)));
+        $ano = (int) DB::table('turmas')->where('id', $turmas[0])->value('ano_letivo');
+        DB::transaction(function () use ($ops, $ano, $desfazer) {
+            $antes = $desfazer ? 0 : count(app(ResolvedorConflitos::class)->conflitosDoAno($ano));
+            foreach ($ops as $op) {
+                $this->validarCasa((int) $op['turma_id'], (int) $op['para']['dia'], (int) $op['para']['faixa_id']);
+                $this->trocarCasas((int) $op['turma_id'], $op['de'], $op['para'], (int) $op['origem_id'], isset($op['destino_id']) ? (int) $op['destino_id'] : null);
+            }
+            if (!$desfazer && count(app(ResolvedorConflitos::class)->conflitosDoAno($ano)) > $antes) {
+                throw new \DomainException('O quadro mudou enquanto o Max pensava. Peça uma nova sugestão.');
+            }
+        });
+        foreach ($turmas as $t) {
+            $this->tocar($t, $usuarioId);
+        }
+        return array_map(fn ($o) => ['turma_id' => (int) $o['turma_id'], 'de' => $o['para'], 'para' => $o['de'],
+            'origem_id' => (int) $o['origem_id'], 'destino_id' => isset($o['destino_id']) ? (int) $o['destino_id'] : null], array_reverse($ops));
+    }
+
+    /**
+     * Leva a aula de uma casa para outra, trocando com a que estiver lá. Com
+     * $origemId informado, confere que é essa aula que está na origem (e
+     * $destinoId, a do destino) — senão o quadro mudou.
+     * @throws \DomainException
+     */
+    private function trocarCasas(int $turmaId, array $de, array $para, ?int $origemId = null, ?int $destinoId = null): void
+    {
+        $q = fn ($c) => DB::table('horario_aulas')->where('turma_id', $turmaId)->where('dia_semana', (int) $c['dia'])->where('faixa_id', (int) $c['faixa_id']);
+        $origem = $q($de)->lockForUpdate()->first();
+        if (!$origem) {
+            throw new \DomainException('A aula não está mais nesse horário. Atualize a tela.');
+        }
+        $destino = $q($para)->lockForUpdate()->first();
+        if ($origemId !== null && ((int) $origem->id !== $origemId || ($destino ? (int) $destino->id : null) !== $destinoId)) {
+            throw new \DomainException('O quadro mudou enquanto o Max pensava. Peça uma nova sugestão.');
+        }
+        // Troca sem violar o UNIQUE (turma, dia, faixa): a origem sai do caminho primeiro.
+        DB::table('horario_aulas')->where('id', $origem->id)->update(['dia_semana' => 0]);
+        if ($destino) {
+            DB::table('horario_aulas')->where('id', $destino->id)->update(['dia_semana' => (int) $de['dia'], 'faixa_id' => (int) $de['faixa_id']]);
+        }
+        DB::table('horario_aulas')->where('id', $origem->id)->update(['dia_semana' => (int) $para['dia'], 'faixa_id' => (int) $para['faixa_id']]);
+    }
+
+    /**
+     * Estado do quadro de um ano letivo, para o resolvedor de choques: as
+     * aulas (com horário real e professor efetivo) e, por turma, as casas de
+     * aula disponíveis (dia × faixa).
+     */
+    public function estadoDoAno(int $ano): array
+    {
+        $casas = [];
+        $linhas = DB::table('horario_turmas as ht')->join('turmas as t', 't.id', '=', 'ht.turma_id')
+            ->join('horario_faixas as f', 'f.modelo_id', '=', 'ht.modelo_id')
+            ->where('t.status', 'Ativa')->where('t.ano_letivo', $ano)->where('f.tipo', 'aula')
+            ->orderBy('f.ordem')->get(['ht.turma_id', 'ht.dias', 'f.id', 'f.ordem', 'f.inicio', 'f.fim']);
+        foreach ($linhas as $l) {
+            foreach (array_map('intval', explode(',', $l->dias)) as $dia) {
+                $casas[(int) $l->turma_id][] = ['dia' => $dia, 'faixa_id' => (int) $l->id, 'ordem' => (int) $l->ordem, 'inicio' => $l->inicio, 'fim' => $l->fim];
+            }
+        }
+        return ['aulas' => $this->aulasComHorario($ano)->keyBy('id')->all(), 'casas' => $casas];
     }
 
     /** Meta de aulas por semana da disciplina na turma (carga do vínculo professor × disciplina). */

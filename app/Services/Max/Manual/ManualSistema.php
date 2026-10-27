@@ -305,7 +305,7 @@ final class ManualSistema
             [
                 'id' => 'quadro-horarios', 'area' => 'Pedagógico', 'titulo' => 'Quadro de horários das turmas',
                 'menu' => 'Pedagógico > Quadro de Horários', 'acesso' => [],
-                'palavras' => 'quadro de horarios horario de aula grade horaria grade semanal que aula tem hoje que horas aula agora proxima aula recreio intervalo sinal agenda calendario celular professor turma sala',
+                'palavras' => 'quadro de horarios horario de aula grade horaria grade semanal que aula tem hoje que horas aula agora proxima aula recreio intervalo sinal agenda calendario celular professor turma sala choque conflito professor em duas turmas resolver trocar horario',
                 'passos' => "Todos consultam: a família e o aluno veem a grade da sua turma (e o card 'Hoje na escola' na Home mostra a aula de agora e a "
                     . "próxima); o professor vê as aulas dele na Home. Abas da equipe: Turmas (a semana de cada turma), Professores (a semana de um "
                     . "professor em todas as turmas) e Agora na escola (o que cada turma está tendo neste momento).\n"
@@ -313,6 +313,11 @@ final class ManualSistema
                     . "horário da turma (Manhã, Tarde...) e os dias. 3. Arraste as disciplinas da lateral para a grade; arraste uma aula para outra casa "
                     . "para trocar; toque numa aula para mudar o professor, pôr a sala ou tirar. O número ao lado da disciplina é aulas na semana / meta "
                     . "(toque para mudar a meta). O triângulo indica professor em duas turmas no mesmo horário. 4. 'Avisar famílias' manda aviso no app.\n"
+                    . "Choques de horário: quem pode editar vê, ao lado do triângulo, o botão 'Deixa que eu resolvo' (do Max). Ele lista cada choque com até 3 "
+                    . "opções de troca (as que mexem menos primeiro; nenhuma cria choque novo) e, se houver vários, 'Resolver ... de uma vez'. Tocar numa "
+                    . "opção mostra na grade como fica (as aulas que mudam piscam); nada muda até tocar em 'Aplicar', e 'Desfazer' volta como estava. "
+                    . "Quando trocar não resolve (ex.: o mesmo professor com todas as aulas de duas turmas no mesmo turno), o Max explica que uma das "
+                    . "turmas precisa de outro professor.\n"
                     . "Horários de aula e intervalo (o 'sinal'): botão 'Horários e intervalos' (no modo Editar) — um horário serve para várias turmas; 'Montar rápido' cria as faixas pelo início, número de aulas, duração (40, 45, 50, 60 min) e intervalos (10, 15, 20, 30 min); mudar a duração de um intervalo empurra os horários seguintes.\n"
                     . "'Adicionar à agenda' (ícone de calendário) baixa as aulas para o calendário do celular, sem os feriados; o ícone de impressora imprime a grade.",
             ],
