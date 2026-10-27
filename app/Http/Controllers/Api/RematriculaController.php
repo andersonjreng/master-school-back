@@ -148,17 +148,6 @@ class RematriculaController extends Controller
         return response()->json(['success' => true, 'data' => $r]);
     }
 
-    /** Encerramento do ano da turma: quem rematriculou e o último dia letivo (para avisar se o ano ainda não acabou). */
-    public function situacaoVirada(Request $request): JsonResponse
-    {
-        $turmaId = (int) $request->query('turma_origem_id');
-        $ano = (int) \Illuminate\Support\Facades\DB::table('turmas')->where('id', $turmaId)->value('ano_letivo');
-        return response()->json([
-            'data' => $this->svc->situacaoParaVirada($turmaId),
-            'fim_ano_letivo' => $ano ? app(\App\Services\Turmas\ViradaAnoService::class)->fimDoAnoLetivo($ano) : null,
-        ]);
-    }
-
     // ── Família ─────────────────────────────────────────────────────────
 
     public function minha(Request $request): JsonResponse

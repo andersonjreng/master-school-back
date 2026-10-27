@@ -467,6 +467,13 @@ class TurmaController extends Controller
         ], 201);
     }
 
+    /** Tela de encerramento do ano: alunos da turma, rematrícula de cada um e resultado sugerido. */
+    public function encerramento(Request $request): JsonResponse
+    {
+        $p = app(\App\Services\Turmas\ViradaAnoService::class)->painel((int) $request->query('turma_id'));
+        return $p ? response()->json(['data' => $p]) : response()->json(['error' => 'Turma não encontrada.'], 404);
+    }
+
     /**
      * Encerramento do ano da turma (virada): destino de cada aluno — promover,
      * reter, concluir ou não renovou. Quem fez a rematrícula tem a reserva

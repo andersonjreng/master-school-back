@@ -338,6 +338,7 @@ Route::prefix('admin')->middleware('max.jwt')->group(function () {
         Route::put('/turmas', [TurmaController::class, 'update']);
         Route::patch('/turmas/status', [TurmaController::class, 'updateStatus']);
         Route::post('/turmas/vincular-alunos', [TurmaController::class, 'vincularAlunos']);
+        Route::get('/turmas/encerramento', [TurmaController::class, 'encerramento']);
         Route::post('/turmas/promover-alunos', [TurmaController::class, 'promoverAlunos']);
         Route::post('/turmas/transferir-aluno', [TurmaController::class, 'transferirAluno']);
 
@@ -479,9 +480,6 @@ Route::prefix('rematricula')->middleware('max.jwt')->group(function () {
         Route::delete('/minha/{alunoId}/recusar', [RematriculaController::class, 'desfazerRecusa'])->whereNumber('alunoId');
         Route::get('/minha/contratos/{id}', [RematriculaController::class, 'meuContrato'])->whereNumber('id');
     });
-
-    // A virada de ano (turmas.gerenciar) também consulta quem rematriculou.
-    Route::get('/situacao-virada', [RematriculaController::class, 'situacaoVirada'])->middleware('max.pode:turmas.gerenciar,rematricula.gerenciar');
 
     Route::middleware('max.pode:rematricula.gerenciar')->group(function () {
         Route::get('/campanhas', [RematriculaController::class, 'campanhas']);

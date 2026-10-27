@@ -314,8 +314,15 @@ class RematriculaService
                 'p.status as cobranca_status'])
             ->keyBy('aluno_id');
 
+        // Quem saiu no encerramento do ano (não renovou / formando) continua listado: pode voltar (rematrícula tardia).
+        $saidas = $this->numeros->porAno() ? DB::table('matriculas as m')->join('alunos as a', 'a.id', '=', 'm.aluno_id')
+            ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
+            ->where('m.ano_letivo', (int) $c->ano_destino - 1)->whereIn('m.resultado', ['nao_renovou', 'concluiu'])
+            ->get(['m.aluno_id', 'm.turma_id', 'm.resultado', 'u.nome_completo as nome']) : collect();
+
         $idsOrigem = DB::table('turmas')->where('ano_letivo', (int) $c->ano_destino - 1)->where('status', 'Ativa')->pluck('id')
-            ->merge($respostas->pluck('turma_origem_id')->filter())->map(fn ($v) => (int) $v)->unique()->all();
+            ->merge($respostas->pluck('turma_origem_id')->filter())->merge($saidas->pluck('turma_id'))
+            ->map(fn ($v) => (int) $v)->unique()->all();
         $origens = DB::table('turmas')->whereIn('id', $idsOrigem ?: [0])->orderBy('nome_turma')->get(['id', 'nome_turma', 'status']);
 
         $turmas = [];
@@ -328,6 +335,11 @@ class RematriculaService
                     $naTurma[$r->aluno_id] = (object) ['aluno_id' => $r->aluno_id, 'nome' => $r->nome];
                 }
             }
+            foreach ($saidas->where('turma_id', $o->id) as $s) {
+                if (!$naTurma->has($s->aluno_id)) {
+                    $naTurma[$s->aluno_id] = (object) ['aluno_id' => $s->aluno_id, 'nome' => $s->nome, 'saiu' => $s->resultado];
+                }
+            }
             if ($naTurma->isEmpty()) {
                 continue;
             }
@@ -335,6 +347,8 @@ class RematriculaService
                 $r = $respostas[$a->aluno_id] ?? null;
                 $ativa = $r && $r->status !== 'cancelada';
                 return [
+                    // Saiu no encerramento do ano sem rematrícula: 'nao_renovou' | 'concluiu'.
+                    'saiu' => !($ativa && in_array($r->status, ['confirmada', 'aguardando_pagamento'], true)) ? ($a->saiu ?? null) : null,
                     'aluno_id' => (int) $a->aluno_id, 'nome' => $a->nome, 'status' => $ativa ? $r->status : 'pendente',
                     'rematricula_id' => $r ? (int) $r->id : null,
                     'plano' => $ativa ? $r->plano : null, 'motivo_recusa' => $r->motivo_recusa ?? null,
@@ -407,6 +421,11 @@ class RematriculaService
                     (int) $r->matricula_financeira_id, 'outro', 'Rematrícula cancelada pela escola', false, $usuarioId);
             }
         }
+        // Rematrícula sem cobrança: tira a marcação "sem cobrança" do ano novo.
+        if (!$r->matricula_financeira_id && !$r->plano_id && in_array($r->status, ['confirmada', 'aguardando_pagamento'], true)) {
+            $ano = (int) DB::table('rematricula_campanhas')->where('id', $r->campanha_id)->value('ano_destino');
+            $this->contratos->removerDispensa((int) $r->aluno_id, $ano);
+        }
         DB::table('rematriculas')->where('id', $rematriculaId)->update([
             'status' => 'cancelada', 'cancelada_por' => $usuarioId, 'atualizado_em' => now(),
         ]);
@@ -430,10 +449,12 @@ class RematriculaService
             ->leftJoin('turmas as td', 'td.id', '=', 'r.turma_destino_id')
             ->whereIn('r.aluno_id', $alunos ?: [0])->where('c.ano_destino', $ano + 1)
             ->whereIn('r.status', ['confirmada', 'aguardando_pagamento', 'recusada'])->whereNull('r.efetivada_em')
+            ->leftJoin('planos_pagamento as pp', 'pp.id', '=', 'r.plano_id')
             ->get(['r.id', 'r.aluno_id', 'r.status', 'r.turma_destino_id', 'td.nome_turma as turma_destino', 'r.motivo_recusa',
-                'r.numero_matricula', 'r.origem', 'c.ano_destino'])
+                'r.numero_matricula', 'r.origem', 'c.ano_destino', 'r.plano_id', 'pp.nome as plano'])
             ->map(fn ($r) => [
                 'rematricula_id' => (int) $r->id, 'aluno_id' => (int) $r->aluno_id, 'status' => $r->status,
+                'plano_id' => $r->plano_id ? (int) $r->plano_id : null, 'plano' => $r->plano,
                 'turma_destino_id' => $r->turma_destino_id ? (int) $r->turma_destino_id : null, 'turma_destino' => $r->turma_destino,
                 'motivo_recusa' => $r->motivo_recusa, 'numero_matricula' => $r->numero_matricula, 'origem' => $r->origem,
                 'ano_destino' => (int) $r->ano_destino,
@@ -671,10 +692,15 @@ class RematriculaService
 
         $existenteMf = DB::table('matriculas_financeiras')->where('aluno_id', $alunoId)->where('ano_letivo', (string) $ano)
             ->where('status', 'ativa')->first(['id', 'plano_id']);
+        // Sem cobrança no ano (bolsa integral, cobrança fora do sistema): vaga garantida sem contrato.
+        $semContrato = !$existenteMf && !empty($d['sem_contrato']);
         $planoId = $existenteMf ? (int) $existenteMf->plano_id : (int) ($d['plano_id'] ?? 0);
         $plano = DB::table('planos_pagamento')->where('id', $planoId)->where('ativo', 1)->first(['id', 'nome', 'numero_parcelas', 'dia_vencimento']);
-        if (!$plano) {
+        if (!$plano && !$semContrato) {
             throw new \DomainException('Escolha o plano de pagamento.');
+        }
+        if ($semContrato) {
+            return $this->rematricularSemContrato($c, $aluno, $destino, $pagador, trim((string) ($d['motivo_sem_contrato'] ?? '')), $usuarioId);
         }
         $vencimento = Carbon::today()->addDays((int) $c->prazo_pagamento_dias)->toDateString();
         if ($pagamento === 'agora') {
@@ -730,6 +756,8 @@ class RematriculaService
             }
             return ['id' => $id, 'parcela_id' => $parcelaCobranca, 'confirmada' => $confirmada];
         });
+
+        $this->efetivarSeTardia($aluno, $resultado['id'], $usuarioId);
 
         // Recebido no balcão: baixa na hora (gera o recibo e confirma a rematrícula).
         $recibo = null;
@@ -829,6 +857,40 @@ class RematriculaService
     // ═════════════════════════════════════════════════════════════════════
 
     /**
+     * Rematrícula sem contrato: o aluno não terá cobrança no ano novo (fica
+     * registrado como "sem cobrança" em Financeiro → Contratos). Vaga e número
+     * garantidos, já confirmada.
+     */
+    private function rematricularSemContrato(object $c, array $aluno, object $destino, array $pagador, string $motivo, int $usuarioId): array
+    {
+        $ano = (int) $c->ano_destino;
+        $id = DB::transaction(function () use ($c, $aluno, $destino, $pagador, $motivo, $usuarioId, $ano) {
+            $existente = DB::table('rematriculas')->where('campanha_id', $c->id)->where('aluno_id', $aluno['id'])->lockForUpdate()->first();
+            if ($existente && in_array($existente->status, ['aguardando_pagamento', 'confirmada'], true)) {
+                throw new \DomainException('A rematrícula deste aluno já foi feita.');
+            }
+            $this->contratos->dispensar($aluno['id'], $ano, $motivo !== '' ? $motivo : 'Rematrícula sem cobrança', $usuarioId);
+            $dados = [
+                'responsavel_id' => $pagador['id'], 'usuario_id' => DB::table('responsaveis')->where('id', $pagador['id'])->value('usuario_id'),
+                'origem' => 'secretaria', 'atendido_por' => $usuarioId,
+                'turma_origem_id' => $aluno['turma_id'], 'turma_destino_id' => (int) $destino->id,
+                'numero_matricula' => $existente->numero_matricula ?? $this->numeros->proximo($ano),
+                'plano_id' => null, 'status' => 'confirmada', 'motivo_recusa' => null,
+                'matricula_financeira_id' => null, 'parcela_cobranca_id' => null, 'desconto_antecipado' => 0,
+                'contrato_html' => null, 'contrato_hash' => null, 'aceite_em' => now(), 'aceite_ip' => null, 'aceite_user_agent' => null,
+                'confirmada_em' => now(), 'cancelada_por' => null, 'atualizado_em' => now(),
+            ];
+            if ($existente) {
+                DB::table('rematriculas')->where('id', $existente->id)->update($dados);
+                return (int) $existente->id;
+            }
+            return (int) DB::table('rematriculas')->insertGetId($dados + ['campanha_id' => $c->id, 'aluno_id' => $aluno['id']]);
+        });
+        $this->efetivarSeTardia($aluno, $id, $usuarioId);
+        return $this->formatarRematricula(DB::table('rematriculas')->where('id', $id)->first()) + ['boleto_emitido' => false, 'recibo' => null];
+    }
+
+    /**
      * Parcela cobrada na hora, conforme a campanha: a 1ª do contrato (vencendo
      * em $vencimento) ou a taxa de matrícula (parcela nº 0, sem desconto).
      */
@@ -916,20 +978,44 @@ class RematriculaService
         return $c;
     }
 
-    /** Aluno ativo numa turma ativa do ano anterior ao da campanha. @throws \DomainException */
+    /**
+     * Aluno ativo numa turma ativa do ano anterior ao da campanha — ou que saiu
+     * no encerramento desse ano (não renovou / formando) e voltou: aí a
+     * rematrícula é "tardia" e já o coloca na turma nova. @throws \DomainException
+     */
     private function alunoParaAtendimento(object $c, int $alunoId): array
     {
+        $anoOrigem = (int) $c->ano_destino - 1;
         $a = DB::table('alunos as a')->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->join('turma_aluno as ta', 'ta.aluno_id', '=', 'a.id')->join('turmas as t', 't.id', '=', 'ta.turma_id')
-            ->where('a.id', $alunoId)->where('u.ativo', 1)->where('t.status', 'Ativa')->where('t.ano_letivo', (int) $c->ano_destino - 1)
+            ->where('a.id', $alunoId)->where('u.ativo', 1)->where('t.status', 'Ativa')->where('t.ano_letivo', $anoOrigem)
             ->first(['a.id', 'u.nome_completo as nome', 'a.matricula', 'a.data_nascimento', 't.id as turma_id', 't.nome_turma as turma']);
+        $tardia = false;
+        if (!$a && $this->numeros->porAno()) {
+            $naTurmaNova = DB::table('turma_aluno as ta')->join('turmas as t', 't.id', '=', 'ta.turma_id')
+                ->where('ta.aluno_id', $alunoId)->where('t.ano_letivo', '>=', (int) $c->ano_destino)->exists();
+            $a = $naTurmaNova ? null : DB::table('matriculas as m')->join('alunos as a', 'a.id', '=', 'm.aluno_id')
+                ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')->join('turmas as t', 't.id', '=', 'm.turma_id')
+                ->where('m.aluno_id', $alunoId)->where('m.ano_letivo', $anoOrigem)->whereIn('m.resultado', ['nao_renovou', 'concluiu'])
+                ->orderByDesc('m.id')
+                ->first(['a.id', 'u.nome_completo as nome', 'a.matricula', 'a.data_nascimento', 't.id as turma_id', 't.nome_turma as turma']);
+            $tardia = (bool) $a;
+        }
         if (!$a) {
-            throw new \DomainException("O aluno precisa estar ativo numa turma de " . ((int) $c->ano_destino - 1) . '.');
+            throw new \DomainException("O aluno precisa estar ativo numa turma de $anoOrigem (ou ter saído no encerramento de $anoOrigem).");
         }
         return [
             'id' => (int) $a->id, 'nome' => $a->nome, 'matricula' => $a->matricula, 'data_nascimento' => $a->data_nascimento,
-            'turma_id' => (int) $a->turma_id, 'turma' => $a->turma,
+            'turma_id' => (int) $a->turma_id, 'turma' => $a->turma, 'tardia' => $tardia,
         ];
+    }
+
+    /** Rematrícula de quem já tinha saído no encerramento: entra direto na turma nova. */
+    private function efetivarSeTardia(array $aluno, int $rematriculaId, int $usuarioId): void
+    {
+        if ($aluno['tardia']) {
+            app(\App\Services\Turmas\ViradaAnoService::class)->efetivarTardia($rematriculaId, $usuarioId);
+        }
     }
 
     /** Turma do ano novo indicada para o aluno: a da campanha para a turma dele ou a série seguinte. */
@@ -1150,6 +1236,20 @@ class RematriculaService
             'turma_destino' => $r->turma_destino_id ? DB::table('turmas')->where('id', $r->turma_destino_id)->value('nome_turma') : null,
             'efetivada' => !empty($r->efetivada_em),
         ];
+    }
+
+    /** Turma do ano seguinte com a mesma série (destino padrão de quem é retido), de preferência no mesmo turno. */
+    public function turmaMesmaSerie(int $turmaOrigemId): ?int
+    {
+        $o = DB::table('turmas')->where('id', $turmaOrigemId)->first(['nome_turma', 'turno', 'ano_letivo']);
+        if (!$o) {
+            return null;
+        }
+        $serie = $this->serie($o->nome_turma);
+        $candidatas = DB::table('turmas')->where('ano_letivo', (int) $o->ano_letivo + 1)->where('status', 'Ativa')
+            ->get(['id', 'nome_turma', 'turno'])->filter(fn ($t) => $this->serie($t->nome_turma) === $serie);
+        $t = $candidatas->firstWhere('turno', $o->turno) ?? $candidatas->first();
+        return $t ? (int) $t->id : null;
     }
 
     /** "1º Ano" → "1o ano"; tira ano solto ("3º Ano - 2027"), acentos e espaços extras. */

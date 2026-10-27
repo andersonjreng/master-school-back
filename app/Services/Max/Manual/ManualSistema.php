@@ -263,9 +263,12 @@ final class ManualSistema
                     . "fizer cedo (opcional); texto do contrato (já vem um modelo com campos automáticos; use Pré-visualizar).\n3. 'Salvar e abrir para as famílias' "
                     . "(elas são avisadas no sino).\nFamília na secretaria: no acompanhamento, abra a turma e toque em 'Rematricular' no aluno > confira a turma "
                     . "do ano novo, o plano e o desconto (como num contrato novo) > 'Recebido agora' (dinheiro, Pix, cartão — gera o recibo) ou 'Pagar depois' "
-                    . "(boleto/Pix no Asaas) > 'Rematricular' > 'Imprimir contrato' para a família assinar. Funciona também depois de encerrar a campanha.\n"
-                    . "A rematrícula garante a vaga: gera o contrato do ano novo e já reserva o número de matrícula do ano (ex.: 2027001). O aluno continua "
-                    . "na turma atual até o encerramento do ano da turma (Administração > Promoção de Alunos), quando muda de turma e passa a usar o número novo.\n"
+                    . "(boleto/Pix no Asaas) > 'Rematricular' > 'Imprimir contrato' para a família assinar. Bolsa integral ou cobrança fora do sistema: "
+                    . "'Sem cobrança neste ano' (vaga sem contrato). Funciona também depois de encerrar a campanha.\n"
+                    . "Só segue para o ano novo quem é rematriculado. A rematrícula garante a vaga: gera o contrato do ano novo e já reserva o número de "
+                    . "matrícula do ano (ex.: 2027001). O aluno continua na turma atual até o encerramento do ano (Secretaria > Encerramento do Ano), "
+                    . "quando muda de turma e passa a usar o número novo. Aluno que saiu no encerramento (não renovou / formado) e voltou: aparece no "
+                    . "acompanhamento com 'Rematricular' e já entra direto na turma nova.\n"
                     . "No acompanhamento: confirmadas, falta pagar, sem resposta e não vão renovar, por turma (com turma reservada e número); "
                     . "'Lembrar quem falta'; ver/imprimir o contrato; cancelar uma rematrícula (cancela o contrato junto); Encerrar. Pagou → confirma sozinha.",
             ],
@@ -279,17 +282,19 @@ final class ManualSistema
                     . "Só o responsável financeiro do aluno faz a rematrícula. Também dá para responder 'Não vamos renovar' (e depois 'Mudei de ideia').",
             ],
             [
-                'id' => 'virada-ano', 'area' => 'Secretaria', 'titulo' => 'Encerramento do ano (virada): promover, reter, concluir',
-                'menu' => 'Administração > Promoção de Alunos', 'acesso' => ['pode' => ['turmas.gerenciar']],
-                'palavras' => 'virada de ano promocao promover reter retido concluir formando nao renovou ano novo passar de ano encerrar turma efetivar rematricula fim do ano letivo numero de matricula novo',
-                'passos' => "Faça no fim do ano letivo, depois do resultado final. Antes: crie o ano novo e as turmas em Parametrizações > Ano Letivo "
-                    . "('Novo ano letivo' e 'Duplicar turmas').\n1. Administração > Promoção de Alunos.\n2. Ano de origem, turma de origem e ano de destino.\n"
-                    . "3. Para cada aluno: Promover, Reter, Concluir ou Não renovou, e a turma de destino. Quem fez a rematrícula já vem com a turma reservada "
-                    . "e o número novo; quem disse que não vai renovar vem como Não renovou. Dá para marcar só alguns alunos e aplicar aos poucos.\n"
-                    . "4. Aplique: o aluno muda de turma e passa a usar o número de matrícula do ano novo (o reservado na rematrícula ou o próximo da "
-                    . "sequência). Retido com rematrícula vai para a turma escolhida aqui, com o mesmo contrato. Rematriculado marcado como Concluir/Não "
-                    . "renovou tem a rematrícula e o contrato do ano novo cancelados. Se todos saíram, a turma de origem é encerrada. Para quem não fez "
-                    . "rematrícula, o sistema oferece gerar os contratos do ano novo.",
+                'id' => 'virada-ano', 'area' => 'Secretaria', 'titulo' => 'Encerramento do ano: aprovado, retido, formado, não volta',
+                'menu' => 'Secretaria > Encerramento do Ano', 'acesso' => ['pode' => ['turmas.gerenciar']],
+                'palavras' => 'virada de ano promocao promover promocao de alunos aprovado reter retido repetir reprovado concluir formando formado nao renovou nao volta ano novo passar de ano encerrar turma efetivar rematricula fim do ano letivo numero de matricula novo',
+                'passos' => "Caminho da renovação: 1º Rematrícula (garante vaga, contrato e número do ano novo) → 2º Encerramento do Ano (resultado do ano; "
+                    . "o aluno muda de turma aqui). Faça no fim do ano letivo, depois do resultado final. Antes: turmas do ano novo criadas "
+                    . "(Parametrizações > Ano Letivo > 'Duplicar turmas') e rematrícula aberta.\n1. Secretaria > Encerramento do Ano.\n2. Escolha o ano e a turma.\n"
+                    . "3. Para cada aluno, o resultado: Aprovado ou Retido (só para quem tem rematrícula — vem com a turma reservada e o número novo; as médias "
+                    . "sugerem retenção quando há disciplina abaixo da média), Formado — sai (última etapa da escola) ou Não volta. Quem está sem "
+                    . "rematrícula tem o botão 'Rematricular' ali mesmo (família presente). Formando que continua na escola (ex.: 3º Período → 1º Ano) é "
+                    . "Aprovado, com rematrícula para a turma da etapa seguinte.\n4. 'Aplicar': quem segue entra na turma do ano novo com o número de "
+                    . "matrícula novo. Retido vai para a turma escolhida (a vaga e o contrato acompanham; o sistema avisa se o plano não for o da turma). "
+                    . "Rematriculado marcado para sair tem a rematrícula e o contrato cancelados. Dá para aplicar só a alguns alunos; quem fica sem decisão "
+                    . "continua na turma. Quando o último sai, a turma é encerrada.",
             ],
 
             // ═══ Financeiro ══════════════════════════════════════════════════
