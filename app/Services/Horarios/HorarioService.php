@@ -161,7 +161,7 @@ class HorarioService
         $faixas = collect($modelo['faixas'] ?? [])->keyBy('id');
 
         $vinculos = $this->vinculos($turmaId);
-        $daEscola = $this->aulasComHorario();
+        $daEscola = $this->aulasComHorario((int) $turma->ano_letivo);
         $aulas = DB::table('horario_aulas as a')->join('disciplinas as d', 'd.id', '=', 'a.disciplina_id')
             ->where('a.turma_id', $turmaId)->get(['a.id', 'a.dia_semana', 'a.faixa_id', 'a.disciplina_id', 'a.professor_id', 'a.sala', 'd.nome_disciplina'])
             ->map(function ($a) use ($vinculos, $faixas, $turmaId, $daEscola) {
@@ -319,7 +319,7 @@ class HorarioService
     {
         return [
             'professor' => ['id' => $professorId, 'nome' => $this->nomeProfessor($professorId)],
-            'aulas' => $this->aulasComHorario()->where('professor_id', $professorId)->values()->all(),
+            'aulas' => $this->aulasComHorario($this->anoAtual())->where('professor_id', $professorId)->values()->all(),
         ];
     }
 
@@ -329,13 +329,13 @@ class HorarioService
         $m = $momento ?? now();
         $dia = $m->dayOfWeekIso;
         $hora = $m->format('H:i:s');
-        $aulas = $this->aulasComHorario()->where('dia', $dia);
+        $aulas = $this->aulasComHorario($this->anoAtual())->where('dia', $dia);
         $intervalos = DB::table('horario_turmas as ht')->join('horario_faixas as f', 'f.modelo_id', '=', 'ht.modelo_id')
             ->where('f.tipo', 'intervalo')->where('f.inicio', '<=', $hora)->where('f.fim', '>', $hora)
             ->get(['ht.turma_id', 'ht.dias', 'f.inicio', 'f.fim', 'f.rotulo'])
             ->filter(fn ($i) => in_array($dia, array_map('intval', explode(',', $i->dias)), true))->keyBy('turma_id');
 
-        return collect($this->turmas())->map(function ($t) use ($aulas, $hora, $intervalos, $m) {
+        return collect($this->turmas())->where('ano_letivo', $this->anoAtual())->map(function ($t) use ($aulas, $hora, $intervalos, $m) {
             $daTurma = $aulas->where('turma_id', $t['id'])->sortBy('inicio')->values();
             $atual = $daTurma->first(fn ($a) => $a['inicio'] <= $hora && $a['fim'] > $hora);
             $proxima = $daTurma->first(fn ($a) => $a['inicio'] > $hora);
@@ -357,7 +357,7 @@ class HorarioService
     {
         $m = now();
         $hora = $m->format('H:i:s');
-        $aulas = $this->aulasComHorario()->where('dia', $m->dayOfWeekIso)->sortBy('inicio')->values();
+        $aulas = $this->aulasComHorario($this->anoAtual())->where('dia', $m->dayOfWeekIso)->sortBy('inicio')->values();
         $resumo = fn ($lista) => [
             'aulas' => $lista->values()->all(),
             'atual' => ($a = $lista->first(fn ($x) => $x['inicio'] <= $hora && $x['fim'] > $hora)) ? $a + ['progresso' => $this->progresso($a['inicio'], $a['fim'], $m)] : null,
@@ -453,8 +453,17 @@ class HorarioService
     // Apoio
     // ═════════════════════════════════════════════════════════════════════
 
-    /** Todas as aulas das turmas ativas com o horário real (início/fim) e o professor efetivo. */
-    private function aulasComHorario()
+    /**
+     * Ano letivo em andamento: "agora", "hoje" e a agenda do professor olham só para ele
+     * (as turmas do ano seguinte, montadas na virada, ainda não têm aula).
+     */
+    private function anoAtual(): int
+    {
+        return (int) now()->year;
+    }
+
+    /** Aulas das turmas ativas (de um ano letivo, se informado) com o horário real (início/fim) e o professor efetivo. */
+    private function aulasComHorario(?int $ano = null)
     {
         $vinculos = DB::table('turma_professor_disciplina')->get(['turma_id', 'disciplina_id', 'professor_id'])
             ->mapWithKeys(fn ($v) => [$v->turma_id . ':' . $v->disciplina_id => $v->professor_id ? (int) $v->professor_id : null]);
@@ -462,7 +471,7 @@ class HorarioService
             ->join('horario_turmas as ht', 'ht.turma_id', '=', 'a.turma_id')
             ->join('horario_faixas as f', 'f.id', '=', 'a.faixa_id')
             ->join('turmas as t', 't.id', '=', 'a.turma_id')->join('disciplinas as d', 'd.id', '=', 'a.disciplina_id')
-            ->where('t.status', 'Ativa')
+            ->where('t.status', 'Ativa')->when($ano, fn ($q) => $q->where('t.ano_letivo', $ano))
             ->get(['a.id', 'a.turma_id', 't.nome_turma', 'a.dia_semana', 'a.faixa_id', 'f.inicio', 'f.fim', 'a.disciplina_id', 'd.nome_disciplina',
                 'a.professor_id', 'a.sala', 'ht.dias'])
             ->filter(fn ($a) => in_array((int) $a->dia_semana, array_map('intval', explode(',', $a->dias)), true))

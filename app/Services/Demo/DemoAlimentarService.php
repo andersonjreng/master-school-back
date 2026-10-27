@@ -71,6 +71,18 @@ class DemoAlimentarService
         $this->comunicacao($turmas);
         $this->financeiroDoAno($turmas);
         $this->rematriculaDoAnoSeguinte($turmas);
+        // Turmas do ano seguinte (criadas na rematrícula) também com a grade pronta.
+        $this->quadroDeHorarios(DB::table('turmas')->where('ano_letivo', $this->ano + 1)->where('status', 'Ativa')->orderBy('nome_turma')->get());
+        $this->novoDiagnosticoDoMax();
+    }
+
+    /** O diagnóstico do Max é feito uma vez por dia: apaga o de hoje para ele refazer com os dados novos. */
+    private function novoDiagnosticoDoMax(): void
+    {
+        if (Schema::hasTable('max_briefings')) {
+            $n = DB::table('max_briefings')->where('data', now()->toDateString())->delete();
+            $this->dizer($n ? 'Max: diagnóstico de hoje apagado — refeito na próxima abertura da home' : 'Max: sem diagnóstico de hoje para refazer');
+        }
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -233,8 +245,12 @@ class DemoAlimentarService
         }
         $this->horarios->criarModelosSugeridos();
         $modelos = collect($this->horarios->modelos());
+        if ($turmas->isEmpty()) {
+            return;
+        }
         $ocupado = [];
-        foreach (DB::table('horario_aulas as a')->leftJoin('turma_professor_disciplina as v', fn ($j) => $j->on('v.turma_id', '=', 'a.turma_id')
+        // Choque de professor só conta dentro do mesmo ano letivo.
+        foreach (DB::table('horario_aulas as a')->join('turmas as tt', 'tt.id', '=', 'a.turma_id')->where('tt.ano_letivo', $turmas->first()->ano_letivo)->leftJoin('turma_professor_disciplina as v', fn ($j) => $j->on('v.turma_id', '=', 'a.turma_id')
             ->on('v.disciplina_id', '=', 'a.disciplina_id'))->get(['a.turma_id', 'a.dia_semana', 'a.faixa_id', 'a.professor_id', 'v.professor_id as pv']) as $a) {
             if ($p = $a->professor_id ?: $a->pv) {
                 $ocupado["$p:{$a->dia_semana}:{$a->faixa_id}"] = true;
@@ -747,9 +763,16 @@ class DemoAlimentarService
         DB::table('anos_letivos')->insertOrIgnore(['ano' => $destino]);
         // "3º Ano - 2027" e "3º Ano" são a mesma série: compara sem o ano no nome.
         $serie = fn (string $n) => mb_strtolower(trim(preg_replace('/\s*[-–]?\s*\b(19|20)\d{2}\b\s*/u', ' ', $n)));
-        $existentes = DB::table('turmas')->where('ano_letivo', $destino)->pluck('nome_turma')->map($serie)->all();
+        $existentes = DB::table('turmas')->where('ano_letivo', $destino)->get(['id', 'nome_turma'])->mapWithKeys(fn ($x) => [$serie($x->nome_turma) => (int) $x->id])->all();
         foreach ($turmas as $t) {
-            if (in_array($serie($t->nome_turma), $existentes, true)) {
+            if ($ja = $existentes[$serie($t->nome_turma)] ?? null) {
+                // Turma do ano seguinte criada sem disciplinas: leva as da turma atual (com os professores).
+                if (!DB::table('turma_professor_disciplina')->where('turma_id', $ja)->exists()) {
+                    foreach (DB::table('turma_professor_disciplina')->where('turma_id', $t->id)->get() as $v) {
+                        DB::table('turma_professor_disciplina')->insertOrIgnore(['turma_id' => $ja, 'disciplina_id' => $v->disciplina_id,
+                            'professor_id' => $v->professor_id, 'carga_horaria_semanal' => $v->carga_horaria_semanal]);
+                    }
+                }
                 continue;
             }
             $nova = DB::table('turmas')->insertGetId(['nome_turma' => $t->nome_turma, 'turno' => $t->turno, 'capacidade' => $t->capacidade,
