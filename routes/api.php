@@ -91,6 +91,7 @@ Route::prefix('documentos')->middleware('max.jwt')->group(function () {
         Route::get('/ata-resultados', [DocumentoEscolarController::class, 'ataResultados']);
         Route::get('/lista-alunos', [DocumentoEscolarController::class, 'listaAlunos']);
         Route::get('/atestado-vaga', [DocumentoEscolarController::class, 'atestadoVaga']);
+        Route::get('/historico-matriculas', [DocumentoController::class, 'historicoMatriculas']);
     });
 });
 
@@ -495,6 +496,8 @@ Route::prefix('rematricula')->middleware('max.jwt')->group(function () {
         Route::get('/turmas', [RematriculaController::class, 'turmas']);
         Route::get('/modelo-contrato', [RematriculaController::class, 'modelo']);
         Route::post('/previa-contrato', [RematriculaController::class, 'previa']);
+        Route::get('/campanhas/{id}/presencial/{alunoId}', [RematriculaController::class, 'opcoesPresencial'])->whereNumber(['id', 'alunoId']);
+        Route::post('/campanhas/{id}/presencial/{alunoId}', [RematriculaController::class, 'presencial'])->whereNumber(['id', 'alunoId']);
         Route::post('/{id}/cancelar', [RematriculaController::class, 'cancelar'])->whereNumber('id');
         Route::get('/{id}/contrato', [RematriculaController::class, 'contratoEscola'])->whereNumber('id');
     });

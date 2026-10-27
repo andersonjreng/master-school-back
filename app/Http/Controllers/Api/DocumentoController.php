@@ -386,4 +386,65 @@ class DocumentoController extends Controller
             'data_emissao' => now()->format('Y-m-d'),
         ]);
     }
+
+    /**
+     * Histórico de matrículas (pedido pela inspeção escolar): dados do aluno e
+     * dos responsáveis e a matrícula de cada ano letivo — número, turma,
+     * período e situação. A vaga garantida por rematrícula (ainda não
+     * efetivada) aparece como a matrícula do ano seguinte.
+     */
+    public function historicoMatriculas(Request $request): JsonResponse
+    {
+        $alunoId = (int) $request->query('aluno_id', 0);
+        if (!$alunoId) {
+            return response()->json(['error' => 'aluno_id é obrigatório.'], 400);
+        }
+        if (!$this->acesso->alunoAcessivel($request->attributes->get('max_user'), $alunoId)) {
+            return response()->json(['error' => 'Acesso negado a este aluno.'], 403);
+        }
+
+        $aluno = DB::table('alunos as a')->join('usuarios as u', 'u.id', '=', 'a.usuario_id')->where('a.id', $alunoId)
+            ->first(['a.id as aluno_id', 'u.nome_completo as nome_aluno', 'a.matricula', 'a.cpf', 'a.data_nascimento', 'a.sexo',
+                'a.endereco', 'a.numero', 'a.complemento', 'a.bairro', 'a.cidade', 'a.uf', 'a.cep', 'a.status_matricula']);
+        if (!$aluno) {
+            return response()->json(['error' => 'Aluno não encontrado.'], 404);
+        }
+
+        $responsaveis = DB::table('aluno_responsavel as ar')->join('responsaveis as r', 'r.id', '=', 'ar.responsavel_id')
+            ->join('usuarios as u', 'u.id', '=', 'r.usuario_id')->where('ar.aluno_id', $alunoId)
+            ->orderByDesc('ar.principal')->orderBy('u.nome_completo')
+            ->get(['u.nome_completo as nome', 'ar.parentesco', 'ar.principal', 'r.cpf', 'r.telefone', 'u.email', 'r.profissao']);
+
+        $temNumero = app(\App\Services\Matriculas\NumeroMatriculaService::class)->porAno();
+        $matriculas = DB::table('matriculas as m')->leftJoin('turmas as t', 't.id', '=', 'm.turma_id')->where('m.aluno_id', $alunoId)
+            ->orderBy('m.ano_letivo')->orderBy('m.id')
+            ->get(array_merge(['m.ano_letivo', 't.nome_turma', 't.turno', 'm.data_inicio', 'm.data_fim', 'm.status',
+                'm.motivo_encerramento', 'm.motivo_detalhe'], $temNumero ? ['m.numero', 'm.resultado'] : []))
+            ->map(fn ($m) => (array) $m + ['numero' => null, 'resultado' => null, 'reserva' => false])->all();
+
+        $rematricula = app(\App\Services\Rematricula\RematriculaService::class);
+        if ($rematricula->disponivel()) {
+            $reservas = DB::table('rematriculas as r')->join('rematricula_campanhas as c', 'c.id', '=', 'r.campanha_id')
+                ->leftJoin('turmas as t', 't.id', '=', 'r.turma_destino_id')
+                ->where('r.aluno_id', $alunoId)->whereIn('r.status', ['aguardando_pagamento', 'confirmada'])->whereNull('r.efetivada_em')
+                ->get(['c.ano_destino', 'r.numero_matricula', 't.nome_turma', 't.turno', 'r.aceite_em', 'r.status']);
+            foreach ($reservas as $r) {
+                $matriculas[] = [
+                    'ano_letivo' => (int) $r->ano_destino, 'numero' => $r->numero_matricula, 'nome_turma' => $r->nome_turma,
+                    'turno' => $r->turno, 'data_inicio' => null, 'data_fim' => null, 'status' => 'reservada', 'resultado' => null,
+                    'motivo_encerramento' => null, 'motivo_detalhe' => null, 'reserva' => true,
+                    'rematricula_em' => $r->aceite_em ? substr($r->aceite_em, 0, 10) : null,
+                ];
+            }
+        }
+
+        return response()->json([
+            'success'      => true,
+            'aluno'        => $aluno,
+            'responsaveis' => $responsaveis,
+            'matriculas'   => $matriculas,
+            'escola'       => $this->escolaConfig->paraDocumento(),
+            'data_emissao' => now()->format('Y-m-d'),
+        ]);
+    }
 }

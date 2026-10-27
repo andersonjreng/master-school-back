@@ -124,9 +124,39 @@ class RematriculaController extends Controller
         return $c ? $this->paginaContrato($c) : response()->json(['error' => 'Contrato não encontrado.'], 404);
     }
 
+    public function opcoesPresencial(int $id, int $alunoId): JsonResponse
+    {
+        try {
+            return response()->json(['data' => $this->svc->opcoesPresencial($id, $alunoId)]);
+        } catch (\DomainException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+    }
+
+    public function presencial(Request $request, int $id, int $alunoId): JsonResponse
+    {
+        $usuario = $request->attributes->get('max_user');
+        try {
+            $r = $this->svc->rematricularPelaEscola($id, $alunoId, $request->all(), (int) ($usuario->id ?? 0));
+        } catch (\DomainException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'Não foi possível concluir a rematrícula: ' . $e->getMessage()], 422);
+        }
+        $this->registrar($request, 'REMATRICULA_PRESENCIAL', "Rematrícula feita na secretaria (aluno #$alunoId, matrícula {$r['numero_matricula']})",
+            ['aluno_id' => $alunoId, 'rematricula_id' => $r['id']]);
+        return response()->json(['success' => true, 'data' => $r]);
+    }
+
+    /** Encerramento do ano da turma: quem rematriculou e o último dia letivo (para avisar se o ano ainda não acabou). */
     public function situacaoVirada(Request $request): JsonResponse
     {
-        return response()->json(['data' => $this->svc->situacaoParaVirada((int) $request->query('turma_origem_id'))]);
+        $turmaId = (int) $request->query('turma_origem_id');
+        $ano = (int) \Illuminate\Support\Facades\DB::table('turmas')->where('id', $turmaId)->value('ano_letivo');
+        return response()->json([
+            'data' => $this->svc->situacaoParaVirada($turmaId),
+            'fim_ano_letivo' => $ano ? app(\App\Services\Turmas\ViradaAnoService::class)->fimDoAnoLetivo($ano) : null,
+        ]);
     }
 
     // ── Família ─────────────────────────────────────────────────────────
@@ -205,19 +235,27 @@ class RematriculaController extends Controller
     {
         $e = fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
         $quando = $c['aceite_em'] ? date('d/m/Y \à\s H:i:s', strtotime($c['aceite_em'])) : '—';
+        $registro = ($c['origem'] ?? 'familia') === 'secretaria'
+            // Feita na secretaria: contrato impresso para as assinaturas.
+            ? '<div class="assinaturas"><div>' . $e($c['aceito_por'] ?? 'Responsável financeiro') . '<br><small>Responsável financeiro</small></div>'
+                . '<div>' . $e($c['atendido_por'] ?? '') . '<br><small>Pela escola</small></div></div>'
+                . '<div class="aceite">Rematrícula feita na secretaria em ' . $e($quando) . ($c['numero_matricula'] ? ' · matrícula nº ' . $e($c['numero_matricula']) : '')
+                . '<br>Código de verificação (SHA-256 do texto): <code>' . $e($c['contrato_hash']) . '</code></div>'
+            : '<div class="aceite"><b>Registro do aceite eletrônico</b><br>'
+                . 'Aceito por: ' . $e($c['aceito_por'] ?? '—') . '<br>'
+                . 'Data e hora: ' . $e($quando) . '<br>'
+                . 'Endereço IP: ' . $e($c['aceite_ip'] ?? '—') . '<br>'
+                . 'Aparelho: ' . $e($c['aceite_user_agent'] ?? '—') . '<br>'
+                . 'Código de verificação (SHA-256 do texto aceito): <code>' . $e($c['contrato_hash']) . '</code></div>';
         $html = '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Contrato — ' . $e($c['aluno']) . '</title>'
             . '<meta name="viewport" content="width=device-width, initial-scale=1">'
             . '<style>body{font-family:Georgia,serif;max-width:780px;margin:24px auto;padding:0 16px;line-height:1.55;color:#111}'
             . 'h3{font-size:1rem;margin:1.4em 0 .4em}h3:first-child{text-align:center;font-size:1.1rem}p{text-align:justify}'
             . '.aceite{margin-top:2em;padding:12px 14px;border:1px solid #999;border-radius:6px;font:13px/1.5 Arial,sans-serif;background:#f6f6f6}'
-            . '.aceite code{word-break:break-all}@media print{.aceite{break-inside:avoid}}</style></head><body>'
-            . $c['contrato_html']
-            . '<div class="aceite"><b>Registro do aceite eletrônico</b><br>'
-            . 'Aceito por: ' . $e($c['aceito_por'] ?? '—') . '<br>'
-            . 'Data e hora: ' . $e($quando) . '<br>'
-            . 'Endereço IP: ' . $e($c['aceite_ip'] ?? '—') . '<br>'
-            . 'Aparelho: ' . $e($c['aceite_user_agent'] ?? '—') . '<br>'
-            . 'Código de verificação (SHA-256 do texto aceito): <code>' . $e($c['contrato_hash']) . '</code></div>'
+            . '.aceite code{word-break:break-all}@media print{.aceite,.assinaturas{break-inside:avoid}}'
+            . '.assinaturas{display:flex;gap:40px;margin:64px 0 24px}.assinaturas div{flex:1;border-top:1px solid #111;padding-top:6px;text-align:center;font:13px/1.4 Arial,sans-serif}'
+            . '</style></head><body>'
+            . $c['contrato_html'] . $registro
             . '</body></html>';
         return response($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
     }

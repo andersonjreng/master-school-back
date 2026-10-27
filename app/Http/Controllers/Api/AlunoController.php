@@ -26,6 +26,7 @@ class AlunoController extends Controller
         private CancelamentoMatriculaFinanceiraService $cancelamentoFinanceiro,
         private AlunoResponsavelVinculoService $vinculos,
         private \App\Services\Cadastro\CadastroValidacaoService $validacao,
+        private \App\Services\Matriculas\NumeroMatriculaService $numeros,
     ) {
     }
 
@@ -101,7 +102,8 @@ class AlunoController extends Controller
         $responsaveis = $this->responsaveisDoRequest($request);
 
         $turma = $turmaId ? DB::table('turmas')->where('id', $turmaId)->first(['id', 'ano_letivo', 'status']) : null;
-        $matricula = $v->texto($request->input('matricula')) ?? ($turma ? $this->proximaMatricula((int) $turma->ano_letivo) : null);
+        // Sem número digitado, a sequência do ano é reservada dentro da transação.
+        $matricula = $v->texto($request->input('matricula'));
 
         $erro = (!$nomeCompleto ? 'Informe o nome completo.' : null)
             ?? (!$dataNascimento ? 'Informe a data de nascimento.' : null)
@@ -114,13 +116,14 @@ class AlunoController extends Controller
             ?? $v->validarEndereco($request->all(), false)
             ?? $this->validarSexo($request->input('sexo'))
             ?? (!$responsaveis ? 'Vincule pelo menos um responsável.' : null)
-            ?? (DB::table('alunos')->where('matricula', $matricula)->exists() ? 'Este número de matrícula já está em uso.' : null);
+            ?? ($matricula && $this->numeros->emUso($matricula) ? 'Este número de matrícula já está em uso.' : null);
         if ($erro) {
             return response()->json(['error' => $erro], 422);
         }
 
         try {
-            [$alunoId, $usuarioId] = DB::transaction(function () use ($request, $v, $nomeCompleto, $email, $senhaBruta, $acessoPortal, $turma, $matricula, $dataNascimento, $responsaveis) {
+            [$alunoId, $usuarioId] = DB::transaction(function () use ($request, $v, $nomeCompleto, $email, $senhaBruta, $acessoPortal, $turma, &$matricula, $dataNascimento, $responsaveis) {
+                $matricula ??= $this->numeros->proximo((int) $turma->ano_letivo);
                 $usuarioId = DB::table('usuarios')->insertGetId([
                     'nome_completo' => $nomeCompleto,
                     'email'         => $email,
@@ -142,14 +145,14 @@ class AlunoController extends Controller
                 ] + $v->endereco($request->all()));
 
                 DB::table('turma_aluno')->insert(['aluno_id' => $alunoId, 'turma_id' => $turma->id]);
-                DB::table('matriculas')->insert([
+                DB::table('matriculas')->insert($this->numeros->linha([
                     'aluno_id'    => $alunoId,
                     'turma_id'    => $turma->id,
                     'ano_letivo'  => $turma->ano_letivo,
                     'data_inicio' => now()->toDateString(),
                     'status'      => 'ativa',
                     'origem'      => 'sistema',
-                ]);
+                ], $matricula));
 
                 DB::table('usuario_funcao')->insert([
                     'usuario_id' => $usuarioId,
@@ -176,15 +179,7 @@ class AlunoController extends Controller
     public function proximaMatriculaSugerida(Request $request): JsonResponse
     {
         $ano = (int) $request->query('ano', now()->year);
-        return response()->json(['success' => true, 'matricula' => $this->proximaMatricula($ano)]);
-    }
-
-    private function proximaMatricula(int $ano): string
-    {
-        $ultima = DB::table('alunos')->where('matricula', 'like', $ano . '%')
-            ->whereRaw('matricula REGEXP ?', ['^' . $ano . '[0-9]+$'])
-            ->max(DB::raw('CAST(SUBSTRING(matricula, 5) AS UNSIGNED)'));
-        return $ano . str_pad((string) (((int) $ultima) + 1), 3, '0', STR_PAD_LEFT);
+        return response()->json(['success' => true, 'matricula' => $this->numeros->sugerir($ano)]);
     }
 
     private function validarSexo($sexo): ?string
@@ -680,7 +675,7 @@ class AlunoController extends Controller
             ?? $this->validarSexo($request->input('sexo'))
             ?? ($request->has('data_nascimento') && !$v->texto($request->input('data_nascimento')) ? 'Informe a data de nascimento.' : null)
             ?? ($responsaveis !== null && !$responsaveis ? 'O aluno precisa de pelo menos um responsável.' : null)
-            ?? ($request->has('matricula') && DB::table('alunos')->where('matricula', $request->input('matricula'))->where('id', '!=', $alunoId)->exists()
+            ?? ($request->has('matricula') && $this->numeros->emUso((string) $request->input('matricula'), $alunoId)
                 ? 'Este número de matrícula já está em uso.' : null);
         if ($erro) {
             return response()->json(['error' => $erro], 422);
@@ -738,6 +733,10 @@ class AlunoController extends Controller
                 if ($camposAluno) {
                     DB::table('alunos')->where('id', $alunoId)->update($camposAluno);
                 }
+                // Número corrigido à mão vale para a matrícula do ano em curso.
+                if (!empty($camposAluno['matricula']) && $this->numeros->porAno()) {
+                    DB::table('matriculas')->where('aluno_id', $alunoId)->where('status', 'ativa')->update(['numero' => $camposAluno['matricula']]);
+                }
                 if ($responsaveis !== null) {
                     $this->sincronizarResponsaveis($alunoId, $responsaveis);
                 }
@@ -749,10 +748,11 @@ class AlunoController extends Controller
                             ->update(['status' => 'transferida', 'data_fim' => now()->toDateString(), 'encerrado_por' => $jwtUser->id ?? null, 'encerrado_em' => now()]);
                     }
                     DB::table('turma_aluno')->insert(['aluno_id' => $alunoId, 'turma_id' => $novaTurmaId]);
-                    DB::table('matriculas')->insert([
+                    // Mesmo ano letivo: o número de matrícula continua o mesmo.
+                    DB::table('matriculas')->insert($this->numeros->linha([
                         'aluno_id' => $alunoId, 'turma_id' => $novaTurmaId, 'ano_letivo' => $ano,
                         'data_inicio' => now()->toDateString(), 'status' => 'ativa', 'origem' => 'sistema',
-                    ]);
+                    ], DB::table('alunos')->where('id', $alunoId)->value('matricula')));
                 }
             });
         } catch (\Throwable $e) {

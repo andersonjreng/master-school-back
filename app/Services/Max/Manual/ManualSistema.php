@@ -244,24 +244,30 @@ final class ManualSistema
             [
                 'id' => 'documentos', 'area' => 'Secretaria', 'titulo' => 'Emitir documentos (declarações, histórico, atas, carteirinha...)',
                 'menu' => 'Secretaria > Documentos (família: Documentos)', 'acesso' => ['pode' => ['documentos.emitir'], 'perfis' => ['Responsável']],
-                'palavras' => 'documento declaracao matricula frequencia escolaridade conclusao transferencia historico escolar ficha ocorrencias comprovante pagamentos imposto de renda ir quitacao nada consta inscricao carteirinha ata resultados lista alunos atestado vaga imprimir pdf',
+                'palavras' => 'documento declaracao matricula frequencia escolaridade conclusao transferencia historico escolar historico de matriculas inspecao escolar numero de matricula por ano ficha ocorrencias comprovante pagamentos imposto de renda ir quitacao nada consta inscricao carteirinha ata resultados lista alunos atestado vaga imprimir pdf',
                 'passos' => "1. Abra Documentos.\n2. Escolha ano, turma e aluno (a família escolhe o filho).\n3. Escolha o documento no catálogo, ajuste as opções "
                     . "(finalidade, data...) > 'Gerar documento'.\n4. Confira a prévia > 'Imprimir / Salvar PDF'.\n"
                     . "Catálogo: Declaração de Matrícula, de Frequência, de Escolaridade/Conclusão e de Transferência; Histórico Escolar; Ficha do Aluno; "
                     . "Relatório de Ocorrências; Comprovante Anual de Pagamentos (IR); Declaração Anual de Quitação; Nada Consta Financeiro; Ficha de "
-                    . "Inscrição; Carteirinha Estudantil; Ata de Resultados Finais e Lista de Alunos (da turma); Atestado de Vaga. "
+                    . "Inscrição; Histórico de Matrículas (secretaria — dados do aluno e dos responsáveis e o número de matrícula, turma e situação "
+                    . "de cada ano letivo, para a inspeção escolar); Carteirinha Estudantil; Ata de Resultados Finais e Lista de Alunos (da turma); Atestado de Vaga. "
                     . "Logo e dados da escola vêm de Administração > Dados da Escola.",
             ],
             [
-                'id' => 'rematricula-escola', 'area' => 'Secretaria', 'titulo' => 'Abrir e acompanhar a rematrícula online',
+                'id' => 'rematricula-escola', 'area' => 'Secretaria', 'titulo' => 'Abrir e acompanhar a rematrícula (online e na secretaria)',
                 'menu' => 'Secretaria > Rematrícula', 'acesso' => ['pode' => ['rematricula.gerenciar']],
-                'palavras' => 'rematricula renovacao matricula ano que vem proximo ano contrato aceite campanha desconto antecipado taxa matricula',
+                'palavras' => 'rematricula renovacao matricula ano que vem proximo ano contrato aceite campanha desconto antecipado taxa matricula presencial balcao secretaria garantir vaga numero de matricula novo',
                 'passos' => "Antes: crie as turmas do ano novo (Parametrizações > Ano Letivo) e vincule um plano a cada uma (Financeiro > Contratos > Planos).\n"
-                    . "1. Secretaria > Rematrícula > 'Nova rematrícula'.\n2. Ano e período; para qual turma do ano novo vai cada turma atual (já sugerido); "
-                    . "o que a família paga na hora (1ª parcela, taxa de matrícula ou nada) e o prazo; desconto para quem fizer cedo (opcional); "
-                    . "texto do contrato (já vem um modelo com campos automáticos; use Pré-visualizar).\n3. 'Salvar e abrir para as famílias' "
-                    . "(elas são avisadas no sino).\nNo acompanhamento: confirmadas, falta pagar, sem resposta e não vão renovar, por turma; "
-                    . "'Lembrar quem falta'; ver o contrato aceito; cancelar uma rematrícula; Encerrar. Pagou → confirma sozinha.",
+                    . "1. Secretaria > Rematrícula > 'Nova rematrícula'.\n2. Ano e período; para qual turma do ano novo vai cada turma atual (é só a sugestão — "
+                    . "cada aluno pode ir para outra); o que a família paga na hora (1ª parcela, taxa de matrícula ou nada) e o prazo; desconto para quem "
+                    . "fizer cedo (opcional); texto do contrato (já vem um modelo com campos automáticos; use Pré-visualizar).\n3. 'Salvar e abrir para as famílias' "
+                    . "(elas são avisadas no sino).\nFamília na secretaria: no acompanhamento, abra a turma e toque em 'Rematricular' no aluno > confira a turma "
+                    . "do ano novo, o plano e o desconto (como num contrato novo) > 'Recebido agora' (dinheiro, Pix, cartão — gera o recibo) ou 'Pagar depois' "
+                    . "(boleto/Pix no Asaas) > 'Rematricular' > 'Imprimir contrato' para a família assinar. Funciona também depois de encerrar a campanha.\n"
+                    . "A rematrícula garante a vaga: gera o contrato do ano novo e já reserva o número de matrícula do ano (ex.: 2027001). O aluno continua "
+                    . "na turma atual até o encerramento do ano da turma (Administração > Promoção de Alunos), quando muda de turma e passa a usar o número novo.\n"
+                    . "No acompanhamento: confirmadas, falta pagar, sem resposta e não vão renovar, por turma (com turma reservada e número); "
+                    . "'Lembrar quem falta'; ver/imprimir o contrato; cancelar uma rematrícula (cancela o contrato junto); Encerrar. Pagou → confirma sozinha.",
             ],
             [
                 'id' => 'rematricula-familia', 'area' => 'Família', 'titulo' => 'Fazer a rematrícula do filho pelo app',
@@ -273,13 +279,17 @@ final class ManualSistema
                     . "Só o responsável financeiro do aluno faz a rematrícula. Também dá para responder 'Não vamos renovar' (e depois 'Mudei de ideia').",
             ],
             [
-                'id' => 'virada-ano', 'area' => 'Secretaria', 'titulo' => 'Virada de ano: promover, reter, concluir',
+                'id' => 'virada-ano', 'area' => 'Secretaria', 'titulo' => 'Encerramento do ano (virada): promover, reter, concluir',
                 'menu' => 'Administração > Promoção de Alunos', 'acesso' => ['pode' => ['turmas.gerenciar']],
-                'palavras' => 'virada de ano promocao promover reter retido concluir formando nao renovou ano novo passar de ano encerrar turma',
-                'passos' => "Antes: crie o ano novo e as turmas em Parametrizações > Ano Letivo ('Novo ano letivo' e 'Duplicar turmas').\n"
-                    . "1. Administração > Promoção de Alunos.\n2. Ano de origem, turma de origem e ano de destino.\n3. Para cada aluno: Promover, Reter, "
-                    . "Concluir ou Não renovou, e a turma de destino. Quem fez a rematrícula online já vem preenchido.\n4. Aplique; se todos saíram, "
-                    . "dá para encerrar a turma de origem. Em seguida o sistema oferece gerar os contratos do ano novo.",
+                'palavras' => 'virada de ano promocao promover reter retido concluir formando nao renovou ano novo passar de ano encerrar turma efetivar rematricula fim do ano letivo numero de matricula novo',
+                'passos' => "Faça no fim do ano letivo, depois do resultado final. Antes: crie o ano novo e as turmas em Parametrizações > Ano Letivo "
+                    . "('Novo ano letivo' e 'Duplicar turmas').\n1. Administração > Promoção de Alunos.\n2. Ano de origem, turma de origem e ano de destino.\n"
+                    . "3. Para cada aluno: Promover, Reter, Concluir ou Não renovou, e a turma de destino. Quem fez a rematrícula já vem com a turma reservada "
+                    . "e o número novo; quem disse que não vai renovar vem como Não renovou. Dá para marcar só alguns alunos e aplicar aos poucos.\n"
+                    . "4. Aplique: o aluno muda de turma e passa a usar o número de matrícula do ano novo (o reservado na rematrícula ou o próximo da "
+                    . "sequência). Retido com rematrícula vai para a turma escolhida aqui, com o mesmo contrato. Rematriculado marcado como Concluir/Não "
+                    . "renovou tem a rematrícula e o contrato do ano novo cancelados. Se todos saíram, a turma de origem é encerrada. Para quem não fez "
+                    . "rematrícula, o sistema oferece gerar os contratos do ano novo.",
             ],
 
             // ═══ Financeiro ══════════════════════════════════════════════════

@@ -433,11 +433,12 @@ class TurmaController extends Controller
                         DB::table('turma_aluno')->insert(['turma_id' => $turmaId, 'aluno_id' => $alunoId]);
                         $criados++;
 
-                        DB::statement("
-                            INSERT INTO matriculas (aluno_id, turma_id, ano_letivo, data_inicio, status, origem)
-                            SELECT ?, ?, t.ano_letivo, CURDATE(), 'ativa', 'sistema'
-                            FROM turmas t WHERE t.id = ?
-                        ", [$alunoId, $turmaId, $turmaId]);
+                        $numeros = app(\App\Services\Matriculas\NumeroMatriculaService::class);
+                        $ano = (int) DB::table('turmas')->where('id', $turmaId)->value('ano_letivo');
+                        DB::table('matriculas')->insert($numeros->linha([
+                            'aluno_id' => $alunoId, 'turma_id' => $turmaId, 'ano_letivo' => $ano,
+                            'data_inicio' => now()->toDateString(), 'status' => 'ativa', 'origem' => 'sistema',
+                        ], $numeros->numeroDoAno($alunoId, $ano)));
                     } catch (\Illuminate\Database\QueryException $e) {
                         $errno = (int) ($e->errorInfo[1] ?? 0);
                         if ($errno === 1062) {
@@ -467,21 +468,11 @@ class TurmaController extends Controller
     }
 
     /**
-     * Promove um lote de alunos de uma turma de origem para turmas de destino
-     * (individuais por aluno). Cada aluno é processado em sua própria transação —
-     * um aluno com problema não derruba o lote inteiro.
-     */
-    /**
-     * Virada de ano: decide o destino de cada aluno da turma de origem.
-     *
-     * Ações por aluno (itens[].acao):
-     * - promover / reter: vai para turma_destino_id (ativa). A matrícula de
-     *   origem é fechada como 'concluida' quando o destino é de outro ano
-     *   (ano concluído), ou 'transferida' se for do mesmo ano.
-     * - concluir: formando — fecha a matrícula como concluída, tira da turma
-     *   e inativa o aluno (status Concluido). Financeiro não é mexido.
-     * - nao_renovou: fecha a matrícula (ano concluído), tira da turma e
-     *   inativa o aluno (status Inativo). Financeiro não é mexido.
+     * Encerramento do ano da turma (virada): destino de cada aluno — promover,
+     * reter, concluir ou não renovou. Quem fez a rematrícula tem a reserva
+     * efetivada aqui (turma, contrato e número do ano novo). Regras em
+     * ViradaAnoService; cada aluno na sua transação, então um aluno com
+     * problema não derruba o lote. Dá para mandar só parte da turma.
      *
      * encerrar_origem = true → encerra a turma de origem se ficar sem alunos.
      * Compatível com o formato antigo (promocoes[] com turma_destino_id).
@@ -517,14 +508,8 @@ class TurmaController extends Controller
             return response()->json(['error' => 'A turma de origem precisa estar ativa. Reabra-a em Cadastros → Turmas se precisar ajustar a promoção.'], 409);
         }
 
-        // Fim da matrícula de origem: hoje ou a última chamada lançada na turma
-        // (o que for depois), para o histórico cobrir o ano letivo inteiro.
-        $ultimaChamada = DB::table('frequencia as f')
-            ->join('turma_aluno as ta', 'ta.aluno_id', '=', 'f.aluno_id')
-            ->where('ta.turma_id', $turmaOrigemId)
-            ->whereYear('f.data', $origem->ano_letivo)
-            ->max('f.data');
-        $dataFim = max(now()->toDateString(), (string) $ultimaChamada);
+        $virada = app(\App\Services\Turmas\ViradaAnoService::class);
+        $dataFim = $virada->dataFim($origem);
 
         $resultado = ['promovidos' => 0, 'retidos' => 0, 'concluidos' => 0, 'nao_renovaram' => 0];
         $erros = [];
@@ -540,47 +525,7 @@ class TurmaController extends Controller
             }
 
             try {
-                DB::transaction(function () use ($alunoId, $acao, $destinoId, $origem, $dataFim, $usuarioIdLogado) {
-                    $vinculado = DB::table('turma_aluno')->where('aluno_id', $alunoId)->where('turma_id', $origem->id)->exists();
-                    if (!$vinculado) {
-                        throw new \Exception('Aluno não está nesta turma.');
-                    }
-
-                    if (in_array($acao, ['promover', 'reter'], true)) {
-                        $destino = DB::table('turmas')->where('id', $destinoId)->first(['id', 'ano_letivo', 'status']);
-                        if (!$destino || $destino->status !== 'Ativa') {
-                            throw new \Exception('Turma de destino não existe ou não está ativa.');
-                        }
-                        if ((int) $destino->id === (int) $origem->id) {
-                            throw new \Exception('A turma de destino deve ser diferente da origem.');
-                        }
-
-                        $anoConcluido = (int) $destino->ano_letivo > (int) $origem->ano_letivo;
-                        $this->fecharMatricula($alunoId, $origem->id, $anoConcluido ? 'concluida' : 'transferida',
-                            $anoConcluido ? 'conclusao' : 'outro', $acao === 'reter' ? 'Retido — permanece na mesma etapa' : null,
-                            $dataFim, $usuarioIdLogado);
-
-                        DB::table('turma_aluno')->where('aluno_id', $alunoId)->where('turma_id', $origem->id)
-                            ->update(['turma_id' => $destino->id]);
-                        DB::table('matriculas')->insert([
-                            'aluno_id' => $alunoId, 'turma_id' => $destino->id, 'ano_letivo' => $destino->ano_letivo,
-                            'data_inicio' => $anoConcluido ? $destino->ano_letivo . '-01-01' : now()->toDateString(),
-                            'status' => 'ativa', 'origem' => 'sistema',
-                        ]);
-                        return;
-                    }
-
-                    // concluir / nao_renovou: sai da escola ao fim do ano.
-                    $concluiu = $acao === 'concluir';
-                    $this->fecharMatricula($alunoId, $origem->id, 'concluida', $concluiu ? 'conclusao' : 'outro',
-                        $concluiu ? 'Concluiu a etapa (formando)' : 'Não renovou a matrícula',
-                        $dataFim, $usuarioIdLogado);
-                    DB::table('turma_aluno')->where('aluno_id', $alunoId)->where('turma_id', $origem->id)->delete();
-                    DB::table('alunos')->where('id', $alunoId)->update(['status_matricula' => $concluiu ? 'Concluido' : 'Inativo']);
-                    $usuarioAluno = DB::table('alunos')->where('id', $alunoId)->value('usuario_id');
-                    DB::table('usuarios')->where('id', $usuarioAluno)->update(['ativo' => 0]);
-                });
-
+                $virada->processarAluno($origem, $alunoId, $acao, $destinoId, $dataFim, $usuarioIdLogado);
                 $chave = ['promover' => 'promovidos', 'reter' => 'retidos', 'concluir' => 'concluidos', 'nao_renovou' => 'nao_renovaram'][$acao];
                 $resultado[$chave]++;
             } catch (\Throwable $e) {
@@ -588,9 +533,7 @@ class TurmaController extends Controller
             }
         }
 
-        $restantes = DB::table('turma_aluno as ta')->join('alunos as al', 'al.id', '=', 'ta.aluno_id')
-                ->join('usuarios as ua', 'ua.id', '=', 'al.usuario_id')->where('ua.ativo', 1)
-            ->where('ta.turma_id', $origem->id)->count();
+        $restantes = $virada->contarRestantes($origem->id);
         $encerrada = false;
         if ($request->boolean('encerrar_origem') && $restantes === 0) {
             DB::table('turmas')->where('id', $origem->id)->update(['status' => 'Encerrada', 'encerrada_em' => now()]);
@@ -613,26 +556,6 @@ class TurmaController extends Controller
             'alunos_restantes' => $restantes,
             'turma_encerrada'  => $encerrada,
         ]);
-    }
-
-    private function fecharMatricula(int $alunoId, int $turmaId, string $status, string $motivo, ?string $detalhe, string $dataFim, int $usuarioId): void
-    {
-        $fechadas = DB::table('matriculas')
-            ->where('aluno_id', $alunoId)->where('turma_id', $turmaId)->where('status', 'ativa')
-            ->update([
-                'status' => $status, 'data_fim' => $dataFim, 'motivo_encerramento' => $motivo,
-                'motivo_detalhe' => $detalhe, 'encerrado_por' => $usuarioId, 'encerrado_em' => now(),
-            ]);
-
-        // Vínculo sem matrícula registrada (dados antigos): cria o histórico já fechado.
-        if ($fechadas === 0) {
-            $ano = DB::table('turmas')->where('id', $turmaId)->value('ano_letivo');
-            DB::table('matriculas')->insert([
-                'aluno_id' => $alunoId, 'turma_id' => $turmaId, 'ano_letivo' => $ano, 'data_fim' => $dataFim,
-                'status' => $status, 'motivo_encerramento' => $motivo, 'motivo_detalhe' => $detalhe,
-                'encerrado_por' => $usuarioId, 'encerrado_em' => now(), 'origem' => 'sistema',
-            ]);
-        }
     }
 
     public function transferirAluno(Request $request): JsonResponse
@@ -691,11 +614,12 @@ class TurmaController extends Controller
                         ->update(['status' => 'transferida', 'data_fim' => now()->toDateString()]);
                 }
 
-                DB::statement("
-                    INSERT INTO matriculas (aluno_id, turma_id, ano_letivo, data_inicio, status, origem)
-                    SELECT ?, ?, t.ano_letivo, CURDATE(), 'ativa', 'sistema'
-                    FROM turmas t WHERE t.id = ?
-                ", [$alunoId, $novaTurmaId, $novaTurmaId]);
+                // Troca de turma no mesmo ano: o número de matrícula continua o mesmo.
+                DB::table('matriculas')->insert(app(\App\Services\Matriculas\NumeroMatriculaService::class)->linha([
+                    'aluno_id' => $alunoId, 'turma_id' => $novaTurmaId,
+                    'ano_letivo' => DB::table('turmas')->where('id', $novaTurmaId)->value('ano_letivo'),
+                    'data_inicio' => now()->toDateString(), 'status' => 'ativa', 'origem' => 'sistema',
+                ], DB::table('alunos')->where('id', $alunoId)->value('matricula')));
             });
         } catch (\Throwable $e) {
             return response()->json(['error' => 'Erro na transferência.', 'message' => $e->getMessage()], 400);

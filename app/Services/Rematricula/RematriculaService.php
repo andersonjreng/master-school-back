@@ -6,7 +6,9 @@ use App\Services\Financeiro\Asaas\AsaasCobrancaService;
 use App\Services\Financeiro\CancelamentoMatriculaFinanceiraService;
 use App\Services\Financeiro\ContratoFinanceiroService;
 use App\Services\Financeiro\FinanceiroConfigService;
+use App\Services\Financeiro\FinanceiroHelperService;
 use App\Services\Financeiro\MatriculaFinanceiraService;
+use App\Services\Matriculas\NumeroMatriculaService;
 use App\Services\Notificacoes\NotificacaoService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -14,18 +16,24 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Rematrícula online.
+ * Rematrícula: garante a vaga do aluno no ano seguinte.
  *
  * A escola abre uma campanha para o ano novo, diz para qual turma vai cada
- * turma atual e o que cobra na hora (1ª parcela, taxa ou nada). A família
- * confere os dados, escolhe o plano, aceita o contrato e paga; ou responde
- * que não vai renovar. O aceite gera na hora o contrato do ano novo (matrícula
- * financeira + parcelas); a rematrícula vira "confirmada" quando a parcela
- * cobrada na hora é paga (baixa manual ou Asaas) — ou já no aceite, se não
- * há cobrança.
+ * turma atual (sugestão — cada aluno pode ir para outra) e o que cobra na hora
+ * (1ª parcela, taxa ou nada). A rematrícula é feita de dois jeitos, que dão
+ * no mesmo resultado:
+ * - pela família no app: confere os dados, escolhe o plano, aceita o contrato
+ *   e paga (ou responde que não vai renovar);
+ * - pela secretaria, com a família presente: escolhe turma, plano e desconto,
+ *   imprime o contrato para assinar e recebe na hora ou gera o boleto.
  *
- * A rematrícula NÃO muda o aluno de turma: isso continua na virada de ano
- * (promoção), que usa o resultado daqui para já vir preenchida.
+ * Em qualquer caso, na hora: contrato do ano novo (matrícula financeira +
+ * parcelas), cobrança do momento e número de matrícula do ano novo reservado
+ * (ex.: 2027001). A rematrícula vira "confirmada" quando a cobrança é paga —
+ * ou já no aceite, se não há cobrança.
+ *
+ * O aluno NÃO muda de turma aqui: continua na turma atual até o encerramento
+ * do ano da turma (ViradaAnoService), que efetiva a reserva.
  */
 class RematriculaService
 {
@@ -37,13 +45,14 @@ class RematriculaService
         private ContratoFinanceiroService $contratos,
         private FinanceiroConfigService $financeiro,
         private NotificacaoService $notificacoes,
+        private NumeroMatriculaService $numeros,
     ) {
     }
 
     public function disponivel(): bool
     {
-        // Escola que ainda não rodou a migration: o resto do sistema segue normal.
-        return $this->tabelas ??= Schema::hasTable('rematriculas');
+        // Escola que ainda não rodou as migrations (2026_10_24_100000 e 2026_10_27_100000): o resto do sistema segue normal.
+        return $this->tabelas ??= Schema::hasTable('rematriculas') && Schema::hasColumn('rematriculas', 'efetivada_em');
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -274,7 +283,13 @@ class RematriculaService
     // Escola: acompanhamento
     // ═════════════════════════════════════════════════════════════════════
 
-    /** Painel: por turma de origem, cada aluno e a situação da rematrícula. */
+    /**
+     * Painel: por turma de origem, cada aluno e a situação da rematrícula.
+     * Mostra todas as turmas do ano anterior — as sem turma padrão no ano novo
+     * (ex.: última série) também, porque a secretaria pode rematricular
+     * qualquer aluno individualmente. Quem já mudou de turma na virada
+     * continua aparecendo pela rematrícula.
+     */
     public function painel(int $id): ?array
     {
         $c = DB::table('rematricula_campanhas')->where('id', $id)->first();
@@ -283,42 +298,67 @@ class RematriculaService
         }
         $this->sincronizarPagamentos($id);
 
-        $mapa = DB::table('rematricula_turmas as rt')
-            ->join('turmas as o', 'o.id', '=', 'rt.turma_origem_id')
-            ->join('turmas as d', 'd.id', '=', 'rt.turma_destino_id')
-            ->where('rt.campanha_id', $id)->orderBy('o.nome_turma')
-            ->get(['o.id as origem_id', 'o.nome_turma as origem', 'd.id as destino_id', 'd.nome_turma as destino']);
+        $mapa = DB::table('rematricula_turmas as rt')->join('turmas as d', 'd.id', '=', 'rt.turma_destino_id')
+            ->where('rt.campanha_id', $id)->get(['rt.turma_origem_id', 'd.id as destino_id', 'd.nome_turma as destino'])
+            ->keyBy('turma_origem_id');
         $respostas = DB::table('rematriculas as r')
             ->leftJoin('parcelas as p', 'p.id', '=', 'r.parcela_cobranca_id')
             ->leftJoin('planos_pagamento as pp', 'pp.id', '=', 'r.plano_id')
+            ->leftJoin('turmas as td', 'td.id', '=', 'r.turma_destino_id')
+            ->leftJoin('alunos as a', 'a.id', '=', 'r.aluno_id')->leftJoin('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->where('r.campanha_id', $id)
             ->get(['r.id', 'r.aluno_id', 'r.status', 'r.motivo_recusa', 'r.aceite_em', 'r.confirmada_em', 'r.atualizado_em',
-                'r.desconto_antecipado', 'pp.nome as plano', 'p.valor_final as cobranca_valor', 'p.data_vencimento as cobranca_vencimento',
+                'r.desconto_antecipado', 'r.turma_origem_id', 'r.turma_destino_id', 'td.nome_turma as turma_destino',
+                'r.numero_matricula', 'r.origem', 'r.efetivada_em', 'u.nome_completo as nome',
+                'pp.nome as plano', 'p.valor_final as cobranca_valor', 'p.data_vencimento as cobranca_vencimento',
                 'p.status as cobranca_status'])
             ->keyBy('aluno_id');
 
+        $idsOrigem = DB::table('turmas')->where('ano_letivo', (int) $c->ano_destino - 1)->where('status', 'Ativa')->pluck('id')
+            ->merge($respostas->pluck('turma_origem_id')->filter())->map(fn ($v) => (int) $v)->unique()->all();
+        $origens = DB::table('turmas')->whereIn('id', $idsOrigem ?: [0])->orderBy('nome_turma')->get(['id', 'nome_turma', 'status']);
+
         $turmas = [];
-        foreach ($mapa as $m) {
-            $alunos = $this->alunosAtivosDaTurma((int) $m->origem_id)->map(function ($a) use ($respostas) {
+        foreach ($origens as $o) {
+            $m = $mapa[$o->id] ?? null;
+            $naTurma = $this->alunosAtivosDaTurma((int) $o->id)->keyBy('aluno_id');
+            // Já efetivados na virada (saíram da turma) seguem na lista pela rematrícula.
+            foreach ($respostas->where('turma_origem_id', $o->id) as $r) {
+                if (!$naTurma->has($r->aluno_id) && $r->status !== 'cancelada' && $r->status !== 'recusada') {
+                    $naTurma[$r->aluno_id] = (object) ['aluno_id' => $r->aluno_id, 'nome' => $r->nome];
+                }
+            }
+            if ($naTurma->isEmpty()) {
+                continue;
+            }
+            $alunos = $naTurma->sortBy('nome', SORT_NATURAL | SORT_FLAG_CASE)->map(function ($a) use ($respostas) {
                 $r = $respostas[$a->aluno_id] ?? null;
-                $status = $r && $r->status !== 'cancelada' ? $r->status : 'pendente';
+                $ativa = $r && $r->status !== 'cancelada';
                 return [
-                    'aluno_id' => (int) $a->aluno_id, 'nome' => $a->nome, 'status' => $status,
+                    'aluno_id' => (int) $a->aluno_id, 'nome' => $a->nome, 'status' => $ativa ? $r->status : 'pendente',
                     'rematricula_id' => $r ? (int) $r->id : null,
-                    'plano' => $r->plano ?? null, 'motivo_recusa' => $r->motivo_recusa ?? null,
+                    'plano' => $ativa ? $r->plano : null, 'motivo_recusa' => $r->motivo_recusa ?? null,
                     'aceite_em' => $r->aceite_em ?? null, 'confirmada_em' => $r->confirmada_em ?? null,
                     'desconto_antecipado' => (bool) ($r->desconto_antecipado ?? false),
-                    'cobranca' => $r && $r->cobranca_valor !== null ? [
+                    'numero_matricula' => $ativa ? $r->numero_matricula : null,
+                    'turma_destino_id' => $ativa && $r->turma_destino_id ? (int) $r->turma_destino_id : null,
+                    'turma_destino' => $ativa ? $r->turma_destino : null,
+                    'origem' => $r->origem ?? null,
+                    'efetivada' => $ativa && !empty($r->efetivada_em),
+                    'cobranca' => $ativa && $r->cobranca_valor !== null ? [
                         'valor' => (float) $r->cobranca_valor, 'vencimento' => $r->cobranca_vencimento, 'status' => $r->cobranca_status,
                     ] : null,
                 ];
             })->values()->all();
             $contagem = array_count_values(array_column($alunos, 'status'));
             $turmas[] = [
-                'origem_id' => (int) $m->origem_id, 'origem' => $m->origem, 'destino_id' => (int) $m->destino_id, 'destino' => $m->destino,
+                'origem_id' => (int) $o->id, 'origem' => $o->nome_turma, 'origem_encerrada' => $o->status !== 'Ativa',
+                'destino_id' => $m ? (int) $m->destino_id : null, 'destino' => $m->destino ?? null,
                 'total' => count($alunos), 'contagem' => $contagem, 'alunos' => $alunos,
             ];
         }
+        // Turmas com destino padrão primeiro; as sem destino (ex.: formandos) no fim.
+        usort($turmas, fn ($a, $b) => [$a['destino_id'] === null, $a['origem']] <=> [$b['destino_id'] === null, $b['origem']]);
 
         return ['campanha' => $this->formatarCampanha($c), 'resumo' => $this->resumo($id), 'turmas' => $turmas];
     }
@@ -357,6 +397,9 @@ class RematriculaService
         if (!in_array($r->status, ['aguardando_pagamento', 'confirmada', 'recusada'], true)) {
             throw new \DomainException('Esta rematrícula já está cancelada.');
         }
+        if (!empty($r->efetivada_em)) {
+            throw new \DomainException('O aluno já está na turma do ano novo. Para tirá-lo, use o cancelamento de matrícula no cadastro do aluno.');
+        }
         if ($r->matricula_financeira_id) {
             $ativa = DB::table('matriculas_financeiras')->where('id', $r->matricula_financeira_id)->where('status', 'ativa')->exists();
             if ($ativa) {
@@ -369,22 +412,52 @@ class RematriculaService
         ]);
     }
 
-    /** Situação de cada aluno de uma turma, para a tela da virada já vir preenchida. */
+    /**
+     * Situação de cada aluno de uma turma, para o encerramento do ano já vir
+     * preenchido: quem rematriculou (turma reservada, número, contrato) e quem
+     * disse que não vai renovar. Busca pelo aluno (e não pela turma da
+     * campanha), porque a reserva é individual.
+     */
     public function situacaoParaVirada(int $turmaOrigemId): array
     {
         if (!$this->disponivel()) {
             return [];
         }
+        $ano = (int) DB::table('turmas')->where('id', $turmaOrigemId)->value('ano_letivo');
+        $alunos = DB::table('turma_aluno')->where('turma_id', $turmaOrigemId)->pluck('aluno_id')->all();
         return DB::table('rematriculas as r')
             ->join('rematricula_campanhas as c', 'c.id', '=', 'r.campanha_id')
-            ->where('r.turma_origem_id', $turmaOrigemId)->whereIn('r.status', ['confirmada', 'aguardando_pagamento', 'recusada'])
-            ->orderByDesc('c.ano_destino')
-            ->get(['r.aluno_id', 'r.status', 'r.turma_destino_id', 'r.motivo_recusa', 'c.ano_destino'])
-            ->unique('aluno_id')
+            ->leftJoin('turmas as td', 'td.id', '=', 'r.turma_destino_id')
+            ->whereIn('r.aluno_id', $alunos ?: [0])->where('c.ano_destino', $ano + 1)
+            ->whereIn('r.status', ['confirmada', 'aguardando_pagamento', 'recusada'])->whereNull('r.efetivada_em')
+            ->get(['r.id', 'r.aluno_id', 'r.status', 'r.turma_destino_id', 'td.nome_turma as turma_destino', 'r.motivo_recusa',
+                'r.numero_matricula', 'r.origem', 'c.ano_destino'])
             ->map(fn ($r) => [
-                'aluno_id' => (int) $r->aluno_id, 'status' => $r->status, 'turma_destino_id' => $r->turma_destino_id ? (int) $r->turma_destino_id : null,
-                'motivo_recusa' => $r->motivo_recusa, 'ano_destino' => (int) $r->ano_destino,
+                'rematricula_id' => (int) $r->id, 'aluno_id' => (int) $r->aluno_id, 'status' => $r->status,
+                'turma_destino_id' => $r->turma_destino_id ? (int) $r->turma_destino_id : null, 'turma_destino' => $r->turma_destino,
+                'motivo_recusa' => $r->motivo_recusa, 'numero_matricula' => $r->numero_matricula, 'origem' => $r->origem,
+                'ano_destino' => (int) $r->ano_destino,
             ])->values()->all();
+    }
+
+    /** Rematrícula feita (vaga garantida) e ainda não efetivada do aluno para o ano seguinte ao $anoOrigem. */
+    public function reservaDoAluno(int $alunoId, int $anoOrigem): ?object
+    {
+        if (!$this->disponivel()) {
+            return null;
+        }
+        return DB::table('rematriculas as r')->join('rematricula_campanhas as c', 'c.id', '=', 'r.campanha_id')
+            ->where('r.aluno_id', $alunoId)->where('c.ano_destino', $anoOrigem + 1)
+            ->whereIn('r.status', ['aguardando_pagamento', 'confirmada'])->whereNull('r.efetivada_em')
+            ->lockForUpdate()->first(['r.id', 'r.turma_destino_id', 'r.numero_matricula', 'r.matricula_financeira_id', 'c.ano_destino']);
+    }
+
+    /** O aluno entrou na turma do ano novo (encerramento da turma de origem). */
+    public function efetivar(int $rematriculaId, int $turmaDestinoId, int $matriculaId): void
+    {
+        DB::table('rematriculas')->where('id', $rematriculaId)->update([
+            'turma_destino_id' => $turmaDestinoId, 'matricula_id' => $matriculaId, 'efetivada_em' => now(), 'atualizado_em' => now(),
+        ]);
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -488,26 +561,13 @@ class RematriculaService
                 'observacoes' => "Rematrícula online {$c->ano_destino} — contrato aceito pelo responsável no app.",
             ]);
 
-            $parcelaCobranca = null;
-            if ($c->cobranca === 'primeira_parcela') {
-                $parcelaCobranca = (int) DB::table('parcelas')->where('matricula_financeira_id', $mf['matricula_id'])
-                    ->where('numero_parcela', 1)->value('id');
-                DB::table('parcelas')->where('id', $parcelaCobranca)->update(['data_vencimento' => $vencimento]);
-            } elseif ($c->cobranca === 'taxa') {
-                // Taxa de matrícula = parcela nº 0 do contrato (sem desconto).
-                $parcelaCobranca = (int) DB::table('parcelas')->insertGetId([
-                    'matricula_financeira_id' => $mf['matricula_id'], 'aluno_id' => $alunoId, 'numero_parcela' => 0,
-                    'valor_original' => (float) $c->taxa_valor, 'desconto_aplicado' => 0, 'valor_final' => (float) $c->taxa_valor,
-                    'data_vencimento' => $vencimento, 'observacoes' => "Taxa de matrícula {$c->ano_destino}",
-                ]);
-            }
-
-            $valorCobranca = $parcelaCobranca ? (float) DB::table('parcelas')->where('id', $parcelaCobranca)->value('valor_final') : 0.0;
-            $confirmada = !$parcelaCobranca || $valorCobranca <= 0;
+            $parcelaCobranca = $this->gerarCobranca($c, (int) $mf['matricula_id'], $alunoId, $vencimento);
+            $confirmada = $this->cobrancaQuitada($parcelaCobranca);
 
             $dados = [
-                'responsavel_id' => $ctx['responsavel']['id'], 'usuario_id' => $usuarioId,
+                'responsavel_id' => $ctx['responsavel']['id'], 'usuario_id' => $usuarioId, 'origem' => 'familia', 'atendido_por' => null,
                 'turma_origem_id' => $ctx['turma_origem_id'], 'turma_destino_id' => $ctx['turma_destino_id'],
+                'numero_matricula' => $existente->numero_matricula ?? $this->numeros->proximo((int) $c->ano_destino),
                 'plano_id' => $planoId, 'status' => $confirmada ? 'confirmada' : 'aguardando_pagamento', 'motivo_recusa' => null,
                 'matricula_financeira_id' => $mf['matricula_id'], 'parcela_cobranca_id' => $parcelaCobranca,
                 'desconto_antecipado' => $antecipado ? 1 : 0, 'contrato_html' => $html, 'contrato_hash' => $hash,
@@ -524,20 +584,169 @@ class RematriculaService
             return ['id' => $id, 'parcela_id' => $parcelaCobranca, 'confirmada' => $confirmada];
         });
 
-        // Boleto/Pix no Asaas fora da transação: se o Asaas falhar, o contrato
-        // fica feito e a família paga pela emissão automática ou na secretaria.
+        $boleto = !$resultado['confirmada'] && $this->emitirBoleto($resultado['parcela_id'], $usuarioId);
+
+        $r = DB::table('rematriculas')->where('id', $resultado['id'])->first();
+        return $this->formatarRematricula($r) + ['boleto_emitido' => $boleto];
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Secretaria: rematrícula presencial (individual)
+    // ═════════════════════════════════════════════════════════════════════
+
+    /**
+     * Tudo que o atendimento presencial precisa para um aluno: turma atual,
+     * turma sugerida e as do ano novo (com os planos de cada uma), desconto
+     * antecipado vigente, o que a campanha cobra na hora, o responsável
+     * financeiro e se ele já tem contrato do ano novo.
+     *
+     * @throws \DomainException
+     */
+    public function opcoesPresencial(int $campanhaId, int $alunoId): array
+    {
+        $c = $this->campanhaParaAtendimento($campanhaId);
+        $aluno = $this->alunoParaAtendimento($c, $alunoId);
+        $ano = (int) $c->ano_destino;
+
+        $destinos = DB::table('turmas')->where('ano_letivo', $ano)->where('status', 'Ativa')->orderBy('nome_turma')
+            ->get(['id', 'nome_turma', 'turno', 'capacidade']);
+        $planos = $this->contratos->planosPorTurma($destinos->pluck('id')->map(fn ($v) => (int) $v)->all());
+        $ocupacao = $this->ocupacaoAnoNovo($ano);
+
+        $pagador = $this->pagador($alunoId);
+        $contrato = DB::table('matriculas_financeiras as mf')->join('planos_pagamento as p', 'p.id', '=', 'mf.plano_id')
+            ->where('mf.aluno_id', $alunoId)->where('mf.ano_letivo', (string) $ano)->where('mf.status', 'ativa')
+            ->first(['mf.id', 'p.nome as plano']);
+        $r = DB::table('rematriculas')->where('campanha_id', $c->id)->where('aluno_id', $alunoId)->first();
+
+        return [
+            'campanha' => $this->formatarCampanha($c) + ['desconto_vigente' => $this->descontoVigente($c)],
+            'aluno' => $aluno,
+            'turma_destino_sugerida' => $this->destinoSugerido($c, $aluno['turma_id'], $aluno['turma']),
+            'turmas_destino' => $destinos->map(fn ($t) => [
+                'id' => (int) $t->id, 'nome' => $t->nome_turma, 'turno' => $t->turno,
+                'capacidade' => $t->capacidade !== null ? (int) $t->capacidade : null,
+                'ocupacao' => $ocupacao[(int) $t->id] ?? 0,
+                'planos' => array_column($planos[(int) $t->id] ?? [], 'id'),
+            ])->all(),
+            'pagador' => $pagador,
+            'pendencias_cadastro' => $pagador ? $this->pendenciasCadastro($pagador) : ['responsável financeiro'],
+            'contrato_existente' => $contrato ? ['id' => (int) $contrato->id, 'plano' => $contrato->plano] : null,
+            'data_inicio' => $this->contratos->dataInicioSugerida($ano),
+            'numero_sugerido' => $r->numero_matricula ?? $this->numeros->sugerir($ano),
+            'rematricula' => $r && $r->status !== 'cancelada' ? $this->formatarRematricula($r) : null,
+            'modo_asaas' => $this->financeiro->modoAsaas(),
+        ];
+    }
+
+    /**
+     * Rematrícula feita pela secretaria com a família presente. Gera o mesmo
+     * que o aceite pelo app (contrato do ano novo, cobrança, número reservado)
+     * e registra o contrato para assinatura em papel.
+     *
+     * $d: turma_destino_id, plano_id, desconto_padrao_id?, desconto_extra_tipo?, desconto_extra_valor?,
+     *     desconto_extra_descricao?, data_inicio?, pagamento ('agora'|'depois'), forma_pagamento?, emitir_boleto?
+     *
+     * @throws \DomainException
+     */
+    public function rematricularPelaEscola(int $campanhaId, int $alunoId, array $d, int $usuarioId): array
+    {
+        $c = $this->campanhaParaAtendimento($campanhaId);
+        $aluno = $this->alunoParaAtendimento($c, $alunoId);
+        $ano = (int) $c->ano_destino;
+
+        $destino = DB::table('turmas')->where('id', (int) ($d['turma_destino_id'] ?? 0))->first(['id', 'nome_turma', 'ano_letivo', 'status']);
+        if (!$destino || (int) $destino->ano_letivo !== $ano || $destino->status !== 'Ativa') {
+            throw new \DomainException("Escolha uma turma ativa de $ano.");
+        }
+        $pagador = $this->pagador($alunoId);
+        if (!$pagador) {
+            throw new \DomainException('O aluno não tem responsável vinculado. Cadastre o responsável financeiro antes.');
+        }
+        $pagamento = ($d['pagamento'] ?? 'depois') === 'agora' ? 'agora' : 'depois';
+        $forma = $d['forma_pagamento'] ?? null;
+        if ($pagamento === 'agora' && !in_array($forma, ['dinheiro', 'pix', 'transferencia', 'cartao_debito', 'cartao_credito'], true)) {
+            throw new \DomainException('Informe a forma de pagamento recebida.');
+        }
+
+        $existenteMf = DB::table('matriculas_financeiras')->where('aluno_id', $alunoId)->where('ano_letivo', (string) $ano)
+            ->where('status', 'ativa')->first(['id', 'plano_id']);
+        $planoId = $existenteMf ? (int) $existenteMf->plano_id : (int) ($d['plano_id'] ?? 0);
+        $plano = DB::table('planos_pagamento')->where('id', $planoId)->where('ativo', 1)->first(['id', 'nome', 'numero_parcelas', 'dia_vencimento']);
+        if (!$plano) {
+            throw new \DomainException('Escolha o plano de pagamento.');
+        }
+        $vencimento = Carbon::today()->addDays((int) $c->prazo_pagamento_dias)->toDateString();
+        if ($pagamento === 'agora') {
+            $vencimento = Carbon::today()->toDateString();
+        }
+
+        $resultado = DB::transaction(function () use ($c, $alunoId, $aluno, $destino, $pagador, $plano, $existenteMf, $d, $usuarioId, $vencimento, $ano) {
+            $existente = DB::table('rematriculas')->where('campanha_id', $c->id)->where('aluno_id', $alunoId)->lockForUpdate()->first();
+            if ($existente && in_array($existente->status, ['aguardando_pagamento', 'confirmada'], true)) {
+                throw new \DomainException('A rematrícula deste aluno já foi feita.');
+            }
+
+            // Contrato já feito em Financeiro → Contratos: a rematrícula usa ele.
+            $mfId = $existenteMf ? (int) $existenteMf->id : (int) $this->matriculas->criar($usuarioId, [
+                'aluno_id' => $alunoId, 'plano_id' => (int) $plano->id, 'ano_letivo' => (string) $ano,
+                'data_inicio' => $d['data_inicio'] ?? $this->contratos->dataInicioSugerida($ano),
+                'desconto_padrao_id' => !empty($d['desconto_padrao_id']) ? (int) $d['desconto_padrao_id'] : null,
+                'desconto_extra_tipo' => !empty($d['desconto_extra_valor']) ? ($d['desconto_extra_tipo'] ?? null) : null,
+                'desconto_extra_valor' => !empty($d['desconto_extra_valor']) ? (float) $d['desconto_extra_valor'] : null,
+                'desconto_extra_descricao' => trim((string) ($d['desconto_extra_descricao'] ?? '')),
+                'observacoes' => "Rematrícula {$c->ano_destino} — feita na secretaria.",
+            ])['matricula_id'];
+
+            $parcelaCobranca = $this->gerarCobranca($c, $mfId, $alunoId, $vencimento);
+            $confirmada = $this->cobrancaQuitada($parcelaCobranca);
+
+            // Contrato com os valores reais das parcelas geradas (descontos já aplicados).
+            $p1 = DB::table('parcelas')->where('matricula_financeira_id', $mfId)->where('numero_parcela', '>=', 1)
+                ->selectRaw('MIN(numero_parcela) as n, SUM(valor_final) as total')->first();
+            $valorParcela = (float) DB::table('parcelas')->where('matricula_financeira_id', $mfId)->where('numero_parcela', (int) $p1->n)->value('valor_final');
+            $html = $this->contrato->montar($c->contrato_modelo, $this->contrato->campos($c, [
+                'responsavel' => $pagador, 'aluno' => (object) ['nome' => $aluno['nome'], 'data_nascimento' => $aluno['data_nascimento']],
+                'turma' => $destino->nome_turma, 'plano' => $plano, 'valor_parcela' => $valorParcela,
+                'valor_total' => round((float) $p1->total, 2), 'desconto' => $this->textoDescontos($mfId), 'data' => now(),
+            ]));
+
+            $dados = [
+                'responsavel_id' => $pagador['id'], 'usuario_id' => DB::table('responsaveis')->where('id', $pagador['id'])->value('usuario_id'),
+                'origem' => 'secretaria', 'atendido_por' => $usuarioId,
+                'turma_origem_id' => $aluno['turma_id'], 'turma_destino_id' => (int) $destino->id,
+                'numero_matricula' => $existente->numero_matricula ?? $this->numeros->proximo($ano),
+                'plano_id' => (int) $plano->id, 'status' => $confirmada ? 'confirmada' : 'aguardando_pagamento', 'motivo_recusa' => null,
+                'matricula_financeira_id' => $mfId, 'parcela_cobranca_id' => $parcelaCobranca, 'desconto_antecipado' => 0,
+                'contrato_html' => $html, 'contrato_hash' => $this->contrato->hash($html),
+                'aceite_em' => now(), 'aceite_ip' => null, 'aceite_user_agent' => null,
+                'confirmada_em' => $confirmada ? now() : null, 'cancelada_por' => null, 'atualizado_em' => now(),
+            ];
+            if ($existente) {
+                DB::table('rematriculas')->where('id', $existente->id)->update($dados);
+                $id = (int) $existente->id;
+            } else {
+                $id = DB::table('rematriculas')->insertGetId($dados + ['campanha_id' => $c->id, 'aluno_id' => $alunoId]);
+            }
+            return ['id' => $id, 'parcela_id' => $parcelaCobranca, 'confirmada' => $confirmada];
+        });
+
+        // Recebido no balcão: baixa na hora (gera o recibo e confirma a rematrícula).
+        $recibo = null;
         $boleto = false;
-        if (!$resultado['confirmada'] && $resultado['parcela_id'] && $this->financeiro->modoAsaas()) {
-            try {
-                app(AsaasCobrancaService::class)->emitir($resultado['parcela_id'], null, false, $usuarioId);
-                $boleto = true;
-            } catch (\Throwable $e) {
-                Log::warning('Rematrícula: falha ao emitir no Asaas', ['parcela' => $resultado['parcela_id'], 'erro' => $e->getMessage()]);
+        if (!$resultado['confirmada'] && $resultado['parcela_id']) {
+            if ($pagamento === 'agora') {
+                $valor = (float) DB::table('parcelas')->where('id', $resultado['parcela_id'])->value('valor_final');
+                $baixa = app(FinanceiroHelperService::class)->aplicarBaixaParcela($resultado['parcela_id'], $valor, now()->toDateString(),
+                    $forma, "Rematrícula {$c->ano_destino} — recebido na secretaria", $usuarioId);
+                $recibo = $baixa['numero_recibo'] ?? null;
+            } elseif (($d['emitir_boleto'] ?? true) !== false) {
+                $boleto = $this->emitirBoleto($resultado['parcela_id'], $usuarioId);
             }
         }
 
         $r = DB::table('rematriculas')->where('id', $resultado['id'])->first();
-        return $this->formatarRematricula($r) + ['boleto_emitido' => $boleto];
+        return $this->formatarRematricula($r) + ['boleto_emitido' => $boleto, 'recibo' => $recibo];
     }
 
     /** "Não vamos renovar" (com motivo). Pode ser desfeito enquanto a campanha estiver aberta. */
@@ -579,10 +788,10 @@ class RematriculaService
     public function contratoAceito(int $rematriculaId): ?array
     {
         $r = DB::table('rematriculas as r')->join('alunos as a', 'a.id', '=', 'r.aluno_id')->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
-            ->leftJoin('usuarios as q', 'q.id', '=', 'r.usuario_id')
+            ->leftJoin('usuarios as q', 'q.id', '=', 'r.usuario_id')->leftJoin('usuarios as at', 'at.id', '=', 'r.atendido_por')
             ->where('r.id', $rematriculaId)->whereNotNull('r.contrato_html')
             ->first(['r.id', 'r.aluno_id', 'r.contrato_html', 'r.contrato_hash', 'r.aceite_em', 'r.aceite_ip', 'r.aceite_user_agent',
-                'u.nome_completo as aluno', 'q.nome_completo as aceito_por']);
+                'r.origem', 'r.numero_matricula', 'u.nome_completo as aluno', 'q.nome_completo as aceito_por', 'at.nome_completo as atendido_por']);
         return $r ? (array) $r : null;
     }
 
@@ -618,6 +827,137 @@ class RematriculaService
     // ═════════════════════════════════════════════════════════════════════
     // Apoio
     // ═════════════════════════════════════════════════════════════════════
+
+    /**
+     * Parcela cobrada na hora, conforme a campanha: a 1ª do contrato (vencendo
+     * em $vencimento) ou a taxa de matrícula (parcela nº 0, sem desconto).
+     */
+    private function gerarCobranca(object $c, int $mfId, int $alunoId, string $vencimento): ?int
+    {
+        if ($c->cobranca === 'primeira_parcela') {
+            $p = DB::table('parcelas')->where('matricula_financeira_id', $mfId)->where('numero_parcela', 1)->first(['id', 'status']);
+            if (!$p) {
+                return null;
+            }
+            if (in_array($p->status, ['pendente', 'vencido'], true)) {
+                DB::table('parcelas')->where('id', $p->id)->update(['data_vencimento' => $vencimento, 'status' => 'pendente']);
+            }
+            return (int) $p->id;
+        }
+        if ($c->cobranca === 'taxa') {
+            $taxa = DB::table('parcelas')->where('matricula_financeira_id', $mfId)->where('numero_parcela', 0)
+                ->whereNotIn('status', ['cancelado', 'negociado'])->value('id');
+            return $taxa ? (int) $taxa : (int) DB::table('parcelas')->insertGetId([
+                'matricula_financeira_id' => $mfId, 'aluno_id' => $alunoId, 'numero_parcela' => 0,
+                'valor_original' => (float) $c->taxa_valor, 'desconto_aplicado' => 0, 'valor_final' => (float) $c->taxa_valor,
+                'data_vencimento' => $vencimento, 'observacoes' => "Taxa de matrícula {$c->ano_destino}",
+            ]);
+        }
+        return null;
+    }
+
+    /** Sem cobrança, cobrança zerada (bolsa) ou já paga: a rematrícula nasce confirmada. */
+    private function cobrancaQuitada(?int $parcelaId): bool
+    {
+        if (!$parcelaId) {
+            return true;
+        }
+        $p = DB::table('parcelas')->where('id', $parcelaId)->first(['valor_final', 'status']);
+        return !$p || (float) $p->valor_final <= 0 || $p->status === 'pago';
+    }
+
+    /**
+     * Boleto/Pix no Asaas, fora da transação: se o Asaas falhar, o contrato
+     * fica feito e a família paga pela emissão automática ou na secretaria.
+     */
+    private function emitirBoleto(?int $parcelaId, int $usuarioId): bool
+    {
+        if (!$parcelaId || !$this->financeiro->modoAsaas()) {
+            return false;
+        }
+        try {
+            app(AsaasCobrancaService::class)->emitir($parcelaId, null, false, $usuarioId);
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Rematrícula: falha ao emitir no Asaas', ['parcela' => $parcelaId, 'erro' => $e->getMessage()]);
+            return false;
+        }
+    }
+
+    /** "10% Irmãos + R$ 50,00 (Rematrícula antecipada)" — para o campo {desconto} do contrato. */
+    private function textoDescontos(int $mfId): string
+    {
+        $mf = DB::table('matriculas_financeiras as mf')->leftJoin('descontos_padrao as d', 'd.id', '=', 'mf.desconto_padrao_id')
+            ->where('mf.id', $mfId)
+            ->first(['d.nome', 'd.tipo', 'd.valor', 'mf.desconto_extra_tipo', 'mf.desconto_extra_valor', 'mf.desconto_extra_descricao']);
+        $fmt = fn ($tipo, $valor) => $tipo === 'percentual'
+            ? rtrim(rtrim(number_format((float) $valor, 2, ',', '.'), '0'), ',') . '%'
+            : 'R$ ' . number_format((float) $valor, 2, ',', '.');
+        $partes = [];
+        if ($mf && $mf->nome) {
+            $partes[] = $fmt($mf->tipo, $mf->valor) . ' (' . $mf->nome . ')';
+        }
+        if ($mf && $mf->desconto_extra_tipo && (float) $mf->desconto_extra_valor > 0) {
+            $partes[] = $fmt($mf->desconto_extra_tipo, $mf->desconto_extra_valor) . ($mf->desconto_extra_descricao ? " ({$mf->desconto_extra_descricao})" : '');
+        }
+        return $partes ? implode(' + ', $partes) : 'sem desconto';
+    }
+
+    /** Campanha em que a secretaria pode atender: aberta ou encerrada (rematrícula fora do prazo). @throws \DomainException */
+    private function campanhaParaAtendimento(int $campanhaId): object
+    {
+        $c = $this->disponivel() ? DB::table('rematricula_campanhas')->where('id', $campanhaId)->first() : null;
+        if (!$c) {
+            throw new \DomainException('Rematrícula não encontrada.');
+        }
+        if ($c->status === 'rascunho') {
+            throw new \DomainException('Abra a rematrícula antes de atender as famílias.');
+        }
+        return $c;
+    }
+
+    /** Aluno ativo numa turma ativa do ano anterior ao da campanha. @throws \DomainException */
+    private function alunoParaAtendimento(object $c, int $alunoId): array
+    {
+        $a = DB::table('alunos as a')->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
+            ->join('turma_aluno as ta', 'ta.aluno_id', '=', 'a.id')->join('turmas as t', 't.id', '=', 'ta.turma_id')
+            ->where('a.id', $alunoId)->where('u.ativo', 1)->where('t.status', 'Ativa')->where('t.ano_letivo', (int) $c->ano_destino - 1)
+            ->first(['a.id', 'u.nome_completo as nome', 'a.matricula', 'a.data_nascimento', 't.id as turma_id', 't.nome_turma as turma']);
+        if (!$a) {
+            throw new \DomainException("O aluno precisa estar ativo numa turma de " . ((int) $c->ano_destino - 1) . '.');
+        }
+        return [
+            'id' => (int) $a->id, 'nome' => $a->nome, 'matricula' => $a->matricula, 'data_nascimento' => $a->data_nascimento,
+            'turma_id' => (int) $a->turma_id, 'turma' => $a->turma,
+        ];
+    }
+
+    /** Turma do ano novo indicada para o aluno: a da campanha para a turma dele ou a série seguinte. */
+    private function destinoSugerido(object $c, int $turmaOrigemId, string $turmaOrigem): ?int
+    {
+        $daCampanha = DB::table('rematricula_turmas')->where('campanha_id', $c->id)->where('turma_origem_id', $turmaOrigemId)->value('turma_destino_id');
+        if ($daCampanha) {
+            return (int) $daCampanha;
+        }
+        $sugestao = collect($this->sugerirTurmas((int) $c->ano_destino))->firstWhere('turma_origem_id', $turmaOrigemId);
+        return $sugestao['turma_destino_id'] ?? null;
+    }
+
+    /** Alunos já na turma do ano novo + vagas garantidas por rematrícula ainda não efetivadas. */
+    private function ocupacaoAnoNovo(int $ano): array
+    {
+        $out = [];
+        $naTurma = DB::table('turma_aluno as ta')->join('turmas as t', 't.id', '=', 'ta.turma_id')->where('t.ano_letivo', $ano)
+            ->selectRaw('ta.turma_id, COUNT(*) as n')->groupBy('ta.turma_id')->pluck('n', 'turma_id');
+        $reservadas = DB::table('rematriculas')->whereIn('status', ['aguardando_pagamento', 'confirmada'])->whereNull('efetivada_em')
+            ->whereNotNull('turma_destino_id')->selectRaw('turma_destino_id, COUNT(*) as n')->groupBy('turma_destino_id')->pluck('n', 'turma_destino_id');
+        foreach ([$naTurma, $reservadas] as $lista) {
+            foreach ($lista as $turmaId => $n) {
+                $out[(int) $turmaId] = ($out[(int) $turmaId] ?? 0) + (int) $n;
+            }
+        }
+        return $out;
+    }
 
     private function campanhaAberta(): ?object
     {
@@ -753,9 +1093,12 @@ class RematriculaService
 
     private function resumo(int $campanhaId): array
     {
+        // Alunos das turmas com destino padrão + quem foi rematriculado individualmente de outra turma.
         $total = DB::table('rematricula_turmas as rt')->join('turma_aluno as ta', 'ta.turma_id', '=', 'rt.turma_origem_id')
             ->join('alunos as a', 'a.id', '=', 'ta.aluno_id')->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
-            ->where('rt.campanha_id', $campanhaId)->where('u.ativo', 1)->distinct()->count('ta.aluno_id');
+            ->where('rt.campanha_id', $campanhaId)->where('u.ativo', 1)->pluck('ta.aluno_id')
+            ->merge(DB::table('rematriculas')->where('campanha_id', $campanhaId)->whereIn('status', ['aguardando_pagamento', 'confirmada'])->pluck('aluno_id'))
+            ->map(fn ($v) => (int) $v)->unique()->count();
         $por = DB::table('rematriculas')->where('campanha_id', $campanhaId)->where('status', '!=', 'cancelada')
             ->selectRaw('status, COUNT(*) as n')->groupBy('status')->pluck('n', 'status');
         $confirmadas = (int) ($por['confirmada'] ?? 0);
@@ -803,6 +1146,9 @@ class RematriculaService
             'id' => (int) $r->id, 'status' => $r->status, 'motivo_recusa' => $r->motivo_recusa,
             'plano_id' => $r->plano_id ? (int) $r->plano_id : null, 'aceite_em' => $r->aceite_em, 'confirmada_em' => $r->confirmada_em,
             'desconto_antecipado' => (bool) $r->desconto_antecipado, 'tem_contrato' => !empty($r->contrato_html), 'cobranca' => $cobranca,
+            'numero_matricula' => $r->numero_matricula ?? null, 'origem' => $r->origem ?? 'familia',
+            'turma_destino' => $r->turma_destino_id ? DB::table('turmas')->where('id', $r->turma_destino_id)->value('nome_turma') : null,
+            'efetivada' => !empty($r->efetivada_em),
         ];
     }
 
