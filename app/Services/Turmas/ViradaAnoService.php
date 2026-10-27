@@ -83,7 +83,7 @@ class ViradaAnoService
         $campanha = $this->rematriculas->disponivel()
             ? DB::table('rematricula_campanhas')->where('ano_destino', $ano + 1)->first(['id', 'status']) : null;
 
-        return [
+        $painel = [
             'turma' => ['id' => (int) $turma->id, 'nome' => $turma->nome_turma, 'turno' => $turma->turno, 'ano_letivo' => $ano, 'status' => $turma->status],
             'ano_destino' => $ano + 1,
             'campanha' => $campanha ? ['id' => (int) $campanha->id, 'status' => $campanha->status] : null,
@@ -92,6 +92,9 @@ class ViradaAnoService
             'turma_retidos' => $this->rematriculas->turmaMesmaSerie($turmaId),
             'alunos' => $alunos,
         ];
+        // Casos para um segundo olhar antes de fechar (frequência, retido por pouco, notas faltando).
+        $painel['revisao'] = $alunos ? app(RevisaoEncerramentoService::class)->revisar($painel) : [];
+        return $painel;
     }
 
     /** Turmas ativas do ano com os planos vinculados (para avisar quando o retido muda para turma de outro plano). */

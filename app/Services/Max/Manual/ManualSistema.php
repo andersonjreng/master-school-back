@@ -289,7 +289,7 @@ final class ManualSistema
             [
                 'id' => 'virada-ano', 'area' => 'Secretaria', 'titulo' => 'Encerramento do ano: aprovado, retido, formado, não volta',
                 'menu' => 'Secretaria > Encerramento do Ano', 'acesso' => ['pode' => ['turmas.gerenciar']],
-                'palavras' => 'virada de ano promocao promover promocao de alunos aprovado reter retido repetir reprovado concluir formando formado nao renovou nao volta ano novo passar de ano encerrar turma efetivar rematricula fim do ano letivo numero de matricula novo',
+                'palavras' => 'virada de ano promocao promover promocao de alunos aprovado reter retido repetir reprovado concluir formando formado nao renovou nao volta ano novo passar de ano encerrar turma efetivar rematricula fim do ano letivo numero de matricula novo conselho de classe frequencia 75 revisao do max',
                 'passos' => "Caminho da renovação: 1º Rematrícula (garante vaga, contrato e número do ano novo) → 2º Encerramento do Ano (resultado do ano; "
                     . "o aluno muda de turma aqui). Faça no fim do ano letivo, depois do resultado final. Antes: turmas do ano novo criadas "
                     . "(Parametrizações > Ano Letivo > 'Duplicar turmas') e rematrícula aberta.\n1. Secretaria > Encerramento do Ano.\n2. Escolha o ano e a turma.\n"
@@ -299,7 +299,12 @@ final class ManualSistema
                     . "Aprovado, com rematrícula para a turma da etapa seguinte.\n4. 'Aplicar': quem segue entra na turma do ano novo com o número de "
                     . "matrícula novo. Retido vai para a turma escolhida (a vaga e o contrato acompanham; o sistema avisa se o plano não for o da turma). "
                     . "Rematriculado marcado para sair tem a rematrícula e o contrato cancelados. Dá para aplicar só a alguns alunos; quem fica sem decisão "
-                    . "continua na turma. Quando o último sai, a turma é encerrada.",
+                    . "continua na turma. Quando o último sai, a turma é encerrada.\n"
+                    . "Revisão do Max: o botão 'N casos para olhar' (ao lado dos contadores) mostra os alunos que merecem um segundo olhar — frequência "
+                    . "abaixo de 75% (a LDB exige 75% para aprovar), retido por pouco (uma só disciplina, a menos de 1 ponto da mínima: caso de "
+                    . "conselho de classe), vários alunos retidos na mesma disciplina (pode ser a avaliação) e notas faltando. Cada caso tem opções "
+                    . "(ex.: 'Aprovar pelo conselho', 'Reter por frequência'); escolher destaca os alunos na lista e 'Aplicar' só marca a decisão na "
+                    . "tela ('Desfazer' volta) — nada é gravado até 'Aplicar' o encerramento.",
             ],
 
             [
