@@ -86,9 +86,9 @@ Manter atualizados os dados de contato e de endereço, acompanhar a vida escolar
 
 A ESCOLA trata os dados pessoais do CONTRATANTE e do(a) aluno(a) para a prestação dos serviços educacionais, para o cumprimento de obrigações legais e para a comunicação com a família, conforme a Lei nº 13.709/2018 (LGPD).
 
-# 8. Aceite eletrônico
+# 8. Aceite
 
-Este contrato é aceito por meio eletrônico, no sistema da ESCOLA, com registro de data, hora, endereço IP e aparelho utilizados, o que as partes reconhecem como forma válida de manifestação de vontade (Lei nº 14.063/2020 e art. 10, § 2º, da MP nº 2.200-2/2001).
+Este contrato é aceito por meio eletrônico, no sistema da ESCOLA, com registro de data, hora, endereço IP e aparelho utilizados, o que as partes reconhecem como forma válida de manifestação de vontade (Lei nº 14.063/2020 e art. 10, § 2º, da MP nº 2.200-2/2001), ou assinado pelas partes na secretaria da ESCOLA.
 
 # 9. Foro
 
