@@ -302,6 +302,21 @@ final class ManualSistema
                     . "continua na turma. Quando o último sai, a turma é encerrada.",
             ],
 
+            [
+                'id' => 'quadro-horarios', 'area' => 'Pedagógico', 'titulo' => 'Quadro de horários das turmas',
+                'menu' => 'Pedagógico > Quadro de Horários', 'acesso' => [],
+                'palavras' => 'quadro de horarios horario de aula grade horaria grade semanal que aula tem hoje que horas aula agora proxima aula recreio intervalo sinal agenda calendario celular professor turma sala',
+                'passos' => "Todos consultam: a família e o aluno veem a grade da sua turma (e o card 'Hoje na escola' na Home mostra a aula de agora e a "
+                    . "próxima); o professor vê as aulas dele na Home. Abas da equipe: Turmas (a semana de cada turma), Professores (a semana de um "
+                    . "professor em todas as turmas) e Agora na escola (o que cada turma está tendo neste momento).\n"
+                    . "Montar (permissão 'Montar o quadro de horários'): 1. Pedagógico > Quadro de Horários > escolha a turma > 'Editar'. 2. Escolha o "
+                    . "horário da turma (Manhã, Tarde...) e os dias. 3. Arraste as disciplinas da lateral para a grade; arraste uma aula para outra casa "
+                    . "para trocar; toque numa aula para mudar o professor, pôr a sala ou tirar. O número ao lado da disciplina é aulas na semana / meta "
+                    . "(toque para mudar a meta). O triângulo indica professor em duas turmas no mesmo horário. 4. 'Avisar famílias' manda aviso no app.\n"
+                    . "Horários de aula e intervalo (o 'sinal'): ícone de engrenagem > Horários do sinal — um horário serve para várias turmas.\n"
+                    . "'Adicionar à agenda' (ícone de calendário) baixa as aulas para o calendário do celular, sem os feriados; o ícone de impressora imprime a grade.",
+            ],
+
             // ═══ Financeiro ══════════════════════════════════════════════════
             [
                 'id' => 'financeiro-visao', 'area' => 'Financeiro', 'titulo' => 'Visão geral do financeiro',

@@ -28,6 +28,7 @@ final class Permissoes
     public const PEDAGOGICO_EDITAR = 'pedagogico.editar';
     public const PLANEJAMENTO_APROVAR = 'planejamento.aprovar';
     public const CALENDARIO_EDITAR = 'calendario.editar';
+    public const HORARIOS_EDITAR = 'horarios.editar';
     public const COMUNICACAO_GESTAO = 'comunicacao.gestao';
     public const WHATSAPP_GERENCIAR = 'whatsapp.gerenciar';
     public const FINANCEIRO_OPERAR = 'financeiro.operar';
@@ -69,6 +70,8 @@ final class Permissoes
             'Ver os planejamentos de todos os professores e aprovar ou devolver.'],
         self::CALENDARIO_EDITAR => ['pedagogico', 'Editar o calendário escolar',
             'Feriados, recessos, sábados letivos e eventos.'],
+        self::HORARIOS_EDITAR => ['pedagogico', 'Montar o quadro de horários',
+            'Definir os horários de aula e intervalos da escola e montar a grade semanal de cada turma (todos podem consultar).'],
 
         self::COMUNICACAO_GESTAO => ['comunicacao', 'Comunicação da escola toda',
             'Publicar no mural para toda a escola e ver ocorrências e recados de todas as turmas.'],
@@ -108,11 +111,11 @@ final class Permissoes
             Papeis::COORDENACAO => [
                 self::PAINEL_DIRECAO, self::PESSOAS_VER, self::DOCUMENTOS_EMITIR,
                 self::PEDAGOGICO_VER, self::PEDAGOGICO_EDITAR, self::PLANEJAMENTO_APROVAR,
-                self::CALENDARIO_EDITAR, self::COMUNICACAO_GESTAO,
+                self::CALENDARIO_EDITAR, self::HORARIOS_EDITAR, self::COMUNICACAO_GESTAO,
             ],
             Papeis::SECRETARIA => [
                 self::PAINEL_DIRECAO, self::PESSOAS_GERENCIAR, self::TURMAS_GERENCIAR, self::REMATRICULA_GERENCIAR,
-                self::DOCUMENTOS_EMITIR, self::PEDAGOGICO_VER, self::COMUNICACAO_GESTAO,
+                self::DOCUMENTOS_EMITIR, self::PEDAGOGICO_VER, self::HORARIOS_EDITAR, self::COMUNICACAO_GESTAO,
             ],
             Papeis::TESOURARIA => [
                 self::PESSOAS_VER, self::DOCUMENTOS_EMITIR, self::FINANCEIRO_OPERAR, self::FINANCEIRO_CONFIGURAR,

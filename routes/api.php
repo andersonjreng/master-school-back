@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\ResponsavelController;
 use App\Http\Controllers\Api\TurmaController;
 use App\Http\Controllers\Api\PushController;
 use App\Http\Controllers\Api\RematriculaController;
+use App\Http\Controllers\Api\HorarioController;
 use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\VinculoProfessorTurmaDisciplinaController;
 use Illuminate\Support\Facades\Route;
@@ -468,6 +469,26 @@ Route::prefix('push')->middleware('max.jwt')->group(function () {
     Route::post('/inscrever', [PushController::class, 'inscrever']);
     Route::post('/cancelar', [PushController::class, 'cancelar']);
     Route::post('/teste', [PushController::class, 'teste']);
+});
+
+// Quadro de horários: todos consultam (família: turmas dos filhos); editar exige horarios.editar (checado no controller).
+Route::prefix('horarios')->middleware('max.jwt')->group(function () {
+    Route::get('/', [HorarioController::class, 'inicio']);
+    Route::get('/hoje', [HorarioController::class, 'hoje']);
+    Route::get('/agora', [HorarioController::class, 'agora']);
+    Route::get('/professores', [HorarioController::class, 'professores']);
+    Route::get('/professores/{id}', [HorarioController::class, 'professor'])->whereNumber('id');
+    Route::post('/modelos', [HorarioController::class, 'salvarModelo']);
+    Route::put('/modelos/{id}', [HorarioController::class, 'salvarModelo'])->whereNumber('id');
+    Route::delete('/modelos/{id}', [HorarioController::class, 'excluirModelo'])->whereNumber('id');
+    Route::get('/turmas/{turmaId}', [HorarioController::class, 'grade'])->whereNumber('turmaId');
+    Route::put('/turmas/{turmaId}', [HorarioController::class, 'configurar'])->whereNumber('turmaId');
+    Route::put('/turmas/{turmaId}/aulas', [HorarioController::class, 'salvarAula'])->whereNumber('turmaId');
+    Route::delete('/turmas/{turmaId}/aulas', [HorarioController::class, 'removerAula'])->whereNumber('turmaId');
+    Route::post('/turmas/{turmaId}/mover', [HorarioController::class, 'mover'])->whereNumber('turmaId');
+    Route::put('/turmas/{turmaId}/carga', [HorarioController::class, 'carga'])->whereNumber('turmaId');
+    Route::post('/turmas/{turmaId}/avisar', [HorarioController::class, 'avisar'])->whereNumber('turmaId');
+    Route::get('/turmas/{turmaId}/ics', [HorarioController::class, 'ics'])->whereNumber('turmaId');
 });
 
 // Rematrícula online: a família aceita o contrato do ano novo e paga pelo app.
