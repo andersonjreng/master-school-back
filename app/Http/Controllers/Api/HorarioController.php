@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Horarios\HorarioService;
+use App\Services\Horarios\ResolvedorConflitos;
 use App\Services\Sistema\LogSistemaService;
 use App\Support\Papeis;
 use App\Support\Permissoes;
@@ -17,7 +18,7 @@ use Illuminate\Http\Response;
  */
 class HorarioController extends Controller
 {
-    public function __construct(private HorarioService $svc, private LogSistemaService $log)
+    public function __construct(private HorarioService $svc, private ResolvedorConflitos $resolvedor, private LogSistemaService $log)
     {
     }
 
@@ -73,6 +74,22 @@ class HorarioController extends Controller
     public function mover(Request $request, int $turmaId): JsonResponse
     {
         return $this->editar($request, fn ($u) => $this->svc->mover($turmaId, (array) $request->input('de'), (array) $request->input('para'), $u));
+    }
+
+    /** "Max, resolve pra mim": os choques da turma com opções de solução e o plano para o ano todo. */
+    public function maxConflitos(Request $request, int $turmaId): JsonResponse
+    {
+        return $this->editar($request, fn () => $this->resolvedor->analisar($turmaId));
+    }
+
+    /** Aplica (ou desfaz) a sugestão do Max; devolve a grade da turma em foco e as trocas que desfazem. */
+    public function maxAplicar(Request $request, int $turmaId): JsonResponse
+    {
+        $desfazer = (bool) $request->input('desfazer');
+        return $this->editar($request, fn ($u) => [
+            'desfazer' => $this->svc->aplicarTrocas((array) $request->input('ops', []), $u, $desfazer),
+            'grade' => $this->svc->grade($turmaId),
+        ], $desfazer ? "Sugestão do Max desfeita (turma #$turmaId)" : "Sugestão do Max aplicada no horário (turma #$turmaId)");
     }
 
     public function carga(Request $request, int $turmaId): JsonResponse

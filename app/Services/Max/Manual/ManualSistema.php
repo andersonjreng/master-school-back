@@ -178,11 +178,14 @@ final class ManualSistema
             [
                 'id' => 'mural', 'area' => 'Comunicação', 'titulo' => 'Mural de comunicados',
                 'menu' => 'Comunicação > Mural', 'acesso' => [],
-                'palavras' => 'comunicado mural aviso publicar circular recado geral confirmar leitura anexo pdf imagem fixar',
+                'palavras' => 'comunicado mural aviso publicar circular recado geral confirmar leitura anexo pdf imagem fixar max escreve escrever texto redigir melhorar texto',
                 'passos' => "Publicar (equipe): Comunicação > Mural > 'Escrever um comunicado'. Escolha 'Para quem' (escola toda, equipe, todas as famílias "
                     . "ou turmas), título, texto, anexo (imagem/PDF), validade, 'Pedir confirmação de leitura' e 'Fixar no topo' > Publicar. "
                     . "Professores publicam para a equipe ou para as famílias das próprias turmas; a escola toda é com a gestão. "
-                    . "'Ver quem leu' mostra quem leu/confirmou.\nFamília: lê, reage e toca em 'Confirmar leitura' quando pedido (não comenta).",
+                    . "'Ver quem leu' mostra quem leu/confirmou.\n'Max, escreve pra mim' (abaixo do texto): escreva só as ideias (ex.: 'passeio dia "
+                    . "14, sair 7h30, trazer lanche') e o Max devolve título e texto prontos; dá para pedir 'Mais curto', 'Mais formal' ou 'Mais "
+                    . "acolhedor', usar ou descartar ('Desfazer' volta o rascunho). Ele não inventa datas nem valores: o que faltar vem entre "
+                    . "[colchetes] para completar. Nada é publicado sem tocar em Publicar.\nFamília: lê, reage e toca em 'Confirmar leitura' quando pedido (não comenta).",
             ],
             [
                 'id' => 'recados', 'area' => 'Comunicação', 'titulo' => 'Recados (conversa privada escola ↔ família)',
@@ -197,7 +200,8 @@ final class ManualSistema
                 'menu' => 'Comunicação > Ocorrências e anotações', 'acesso' => [],
                 'palavras' => 'ocorrencia anotacao comportamento elogio saude grave atencao ciencia registro disciplinar',
                 'passos' => "Equipe: Comunicação > Ocorrências e anotações > Registrar. Escolha o aluno, tipo, nível (Informativo, Atenção, Grave), título e "
-                    . "descrição. Deixe como 'Anotação interna' (só a equipe vê) ou 'Compartilhar com a família' e, se quiser, peça ciência.\n"
+                    . "descrição. Deixe como 'Anotação interna' (só a equipe vê) ou 'Compartilhar com a família' e, se quiser, peça ciência. "
+                    . "'Max, escreve pra mim' reescreve o registro de forma objetiva e respeitosa (sem rótulos sobre a criança), para revisar antes de salvar.\n"
                     . "Família: vê as ocorrências compartilhadas do filho e toca em 'Estou ciente'.",
             ],
 
@@ -289,7 +293,7 @@ final class ManualSistema
             [
                 'id' => 'virada-ano', 'area' => 'Secretaria', 'titulo' => 'Encerramento do ano: aprovado, retido, formado, não volta',
                 'menu' => 'Secretaria > Encerramento do Ano', 'acesso' => ['pode' => ['turmas.gerenciar']],
-                'palavras' => 'virada de ano promocao promover promocao de alunos aprovado reter retido repetir reprovado concluir formando formado nao renovou nao volta ano novo passar de ano encerrar turma efetivar rematricula fim do ano letivo numero de matricula novo',
+                'palavras' => 'virada de ano promocao promover promocao de alunos aprovado reter retido repetir reprovado concluir formando formado nao renovou nao volta ano novo passar de ano encerrar turma efetivar rematricula fim do ano letivo numero de matricula novo conselho de classe frequencia 75 revisao do max',
                 'passos' => "Caminho da renovação: 1º Rematrícula (garante vaga, contrato e número do ano novo) → 2º Encerramento do Ano (resultado do ano; "
                     . "o aluno muda de turma aqui). Faça no fim do ano letivo, depois do resultado final. Antes: turmas do ano novo criadas "
                     . "(Parametrizações > Ano Letivo > 'Duplicar turmas') e rematrícula aberta.\n1. Secretaria > Encerramento do Ano.\n2. Escolha o ano e a turma.\n"
@@ -299,13 +303,18 @@ final class ManualSistema
                     . "Aprovado, com rematrícula para a turma da etapa seguinte.\n4. 'Aplicar': quem segue entra na turma do ano novo com o número de "
                     . "matrícula novo. Retido vai para a turma escolhida (a vaga e o contrato acompanham; o sistema avisa se o plano não for o da turma). "
                     . "Rematriculado marcado para sair tem a rematrícula e o contrato cancelados. Dá para aplicar só a alguns alunos; quem fica sem decisão "
-                    . "continua na turma. Quando o último sai, a turma é encerrada.",
+                    . "continua na turma. Quando o último sai, a turma é encerrada.\n"
+                    . "Revisão do Max: o botão 'N casos para olhar' (ao lado dos contadores) mostra os alunos que merecem um segundo olhar — frequência "
+                    . "abaixo de 75% (a LDB exige 75% para aprovar), retido por pouco (uma só disciplina, a menos de 1 ponto da mínima: caso de "
+                    . "conselho de classe), vários alunos retidos na mesma disciplina (pode ser a avaliação) e notas faltando. Cada caso tem opções "
+                    . "(ex.: 'Aprovar pelo conselho', 'Reter por frequência'); escolher destaca os alunos na lista e 'Aplicar' só marca a decisão na "
+                    . "tela ('Desfazer' volta) — nada é gravado até 'Aplicar' o encerramento.",
             ],
 
             [
                 'id' => 'quadro-horarios', 'area' => 'Pedagógico', 'titulo' => 'Quadro de horários das turmas',
                 'menu' => 'Pedagógico > Quadro de Horários', 'acesso' => [],
-                'palavras' => 'quadro de horarios horario de aula grade horaria grade semanal que aula tem hoje que horas aula agora proxima aula recreio intervalo sinal agenda calendario celular professor turma sala',
+                'palavras' => 'quadro de horarios horario de aula grade horaria grade semanal que aula tem hoje que horas aula agora proxima aula recreio intervalo sinal agenda calendario celular professor turma sala choque conflito professor em duas turmas resolver trocar horario',
                 'passos' => "Todos consultam: a família e o aluno veem a grade da sua turma (e o card 'Hoje na escola' na Home mostra a aula de agora e a "
                     . "próxima); o professor vê as aulas dele na Home. Abas da equipe: Turmas (a semana de cada turma), Professores (a semana de um "
                     . "professor em todas as turmas) e Agora na escola (o que cada turma está tendo neste momento).\n"
@@ -313,6 +322,11 @@ final class ManualSistema
                     . "horário da turma (Manhã, Tarde...) e os dias. 3. Arraste as disciplinas da lateral para a grade; arraste uma aula para outra casa "
                     . "para trocar; toque numa aula para mudar o professor, pôr a sala ou tirar. O número ao lado da disciplina é aulas na semana / meta "
                     . "(toque para mudar a meta). O triângulo indica professor em duas turmas no mesmo horário. 4. 'Avisar famílias' manda aviso no app.\n"
+                    . "Choques de horário: quem pode editar vê, ao lado do triângulo, o botão 'Deixa que eu resolvo' (do Max). Ele lista cada choque com até 3 "
+                    . "opções de troca (as que mexem menos primeiro; nenhuma cria choque novo) e, se houver vários, 'Resolver ... de uma vez'. Tocar numa "
+                    . "opção mostra na grade como fica (as aulas que mudam piscam); nada muda até tocar em 'Aplicar', e 'Desfazer' volta como estava. "
+                    . "Quando trocar não resolve (ex.: o mesmo professor com todas as aulas de duas turmas no mesmo turno), o Max explica que uma das "
+                    . "turmas precisa de outro professor.\n"
                     . "Horários de aula e intervalo (o 'sinal'): botão 'Horários e intervalos' (no modo Editar) — um horário serve para várias turmas; 'Montar rápido' cria as faixas pelo início, número de aulas, duração (40, 45, 50, 60 min) e intervalos (10, 15, 20, 30 min); mudar a duração de um intervalo empurra os horários seguintes.\n"
                     . "'Adicionar à agenda' (ícone de calendário) baixa as aulas para o calendário do celular, sem os feriados; o ícone de impressora imprime a grade.",
             ],

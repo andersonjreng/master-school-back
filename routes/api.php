@@ -373,6 +373,7 @@ Route::prefix('comunicacao')->middleware('max.jwt')->group(function () {
 
     Route::get('/mural', [\App\Http\Controllers\Api\ComunicacaoController::class, 'mural']);
     Route::get('/mural/opcoes', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralOpcoes']);
+    Route::post('/max/escrever', [\App\Http\Controllers\Api\ComunicacaoController::class, 'maxEscrever']);
     Route::post('/mural', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralSalvar']);
     Route::post('/mural/lidos', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralTodosLidos']);
     Route::post('/mural/{id}', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralSalvar'])->whereNumber('id');
@@ -487,6 +488,8 @@ Route::prefix('horarios')->middleware('max.jwt')->group(function () {
     Route::delete('/turmas/{turmaId}/aulas', [HorarioController::class, 'removerAula'])->whereNumber('turmaId');
     Route::post('/turmas/{turmaId}/mover', [HorarioController::class, 'mover'])->whereNumber('turmaId');
     Route::put('/turmas/{turmaId}/carga', [HorarioController::class, 'carga'])->whereNumber('turmaId');
+    Route::get('/turmas/{turmaId}/max', [HorarioController::class, 'maxConflitos'])->whereNumber('turmaId');
+    Route::post('/turmas/{turmaId}/max', [HorarioController::class, 'maxAplicar'])->whereNumber('turmaId');
     Route::post('/turmas/{turmaId}/avisar', [HorarioController::class, 'avisar'])->whereNumber('turmaId');
     Route::get('/turmas/{turmaId}/ics', [HorarioController::class, 'ics'])->whereNumber('turmaId');
 });

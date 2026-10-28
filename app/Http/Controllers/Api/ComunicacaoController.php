@@ -121,6 +121,24 @@ class ComunicacaoController extends Controller
         return $this->resposta($this->mural->feed($p, (string) $request->query('filtro', 'todos'), (int) $request->query('pagina', 1)));
     }
 
+    /** "Escreve pra mim": o Max desenvolve o rascunho (comunicado ou ocorrência). Só a equipe; nada é publicado aqui. */
+    public function maxEscrever(Request $request, \App\Services\Comunicacao\MaxEscreveService $max): JsonResponse
+    {
+        $p = $this->perfil($request);
+        if (!$p->ehEquipe()) {
+            return response()->json(['error' => 'Disponível para a equipe da escola.'], 403);
+        }
+        $tipo = in_array($request->input('tipo'), \App\Services\Comunicacao\MaxEscreveService::TIPOS, true) ? $request->input('tipo') : 'comunicado';
+        try {
+            return $this->resposta($max->escrever($p, $tipo, (string) $request->input('titulo', ''), (string) $request->input('texto', ''),
+                (array) $request->input('contexto', []), $request->input('ajuste')));
+        } catch (\DomainException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'O Max não conseguiu escrever agora. Tente de novo em instantes.'], 502);
+        }
+    }
+
     public function muralOpcoes(Request $request): JsonResponse
     {
         $p = $this->perfil($request);
