@@ -16,7 +16,7 @@ class EscolaConfigService
     /** logo_url fica de fora: só é alterado via ConfigController::setLogo()/deleteLogo(). */
     private const CHAVES_EDITAVEIS = [
         'nome_escola', 'cnpj', 'endereco', 'autorizacao_mec',
-        'diretor_nome', 'diretor_cargo', 'telefone', 'email',
+        'diretor_nome', 'diretor_cargo', 'telefone', 'email', 'cor_primaria',
     ];
 
     private const DEFAULTS = [
@@ -29,6 +29,8 @@ class EscolaConfigService
         'telefone'        => '',
         'email'           => '',
         'logo_url'        => '',
+        // Cor do sistema (hex); '' = cor padrão. O front gera os tons a partir dela.
+        'cor_primaria'    => '',
     ];
 
     public function obter(): array
@@ -69,6 +71,9 @@ class EscolaConfigService
      */
     public function salvar(array $dados): array
     {
+        if (array_key_exists('cor_primaria', $dados)) {
+            $dados['cor_primaria'] = $this->validarCor((string) $dados['cor_primaria']);
+        }
         foreach (self::CHAVES_EDITAVEIS as $chave) {
             if (!array_key_exists($chave, $dados)) {
                 continue;
@@ -81,6 +86,34 @@ class EscolaConfigService
         }
 
         return $this->obter();
+    }
+
+    /**
+     * Cor do sistema: hex de 6 dígitos (ou '' para a padrão). Os botões têm
+     * texto branco sobre essa cor, então ela precisa de contraste de leitura
+     * (WCAG AA, 4,5:1) — cor clara demais é recusada.
+     * @throws \DomainException
+     */
+    private function validarCor(string $cor): string
+    {
+        $cor = strtolower(trim($cor));
+        if ($cor === '') {
+            return '';
+        }
+        if (!preg_match('/^#[0-9a-f]{6}$/', $cor)) {
+            throw new \DomainException('Cor inválida.');
+        }
+        $lum = function (string $hex): float {
+            $c = array_map(function ($i) use ($hex) {
+                $v = hexdec(substr($hex, $i, 2)) / 255;
+                return $v <= 0.03928 ? $v / 12.92 : (($v + 0.055) / 1.055) ** 2.4;
+            }, [1, 3, 5]);
+            return 0.2126 * $c[0] + 0.7152 * $c[1] + 0.0722 * $c[2];
+        };
+        if (1.05 / ($lum($cor) + 0.05) < 4.5) {
+            throw new \DomainException('Essa cor é clara demais: o texto branco dos botões fica difícil de ler. Escolha um tom mais escuro.');
+        }
+        return $cor;
     }
 
     public function definirLogo(string $caminhoBanco): void
