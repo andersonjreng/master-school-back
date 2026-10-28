@@ -405,10 +405,11 @@ final class ManualSistema
 
             // ═══ Administração ═══════════════════════════════════════════════
             [
-                'id' => 'dados-escola', 'area' => 'Administração', 'titulo' => 'Dados da escola e logo',
+                'id' => 'dados-escola', 'area' => 'Administração', 'titulo' => 'Dados da escola, logo e cor do sistema',
                 'menu' => 'Administração > Dados da Escola', 'acesso' => ['pode' => ['configuracoes.escola']],
-                'palavras' => 'dados escola nome cnpj endereco logo diretor mec telefone email cabecalho',
-                'passos' => 'Administração > Dados da Escola: nome, CNPJ, endereço, autorização do MEC, diretor(a), telefone, e-mail e logo. Usados nos documentos, no contrato da rematrícula e no topo do sistema.',
+                'palavras' => 'dados escola nome cnpj endereco logo diretor mec telefone email cabecalho cor do sistema cor primaria tema cor da escola personalizar aparencia',
+                'passos' => 'Administração > Dados da Escola: nome, CNPJ, endereço, autorização do MEC, diretor(a), telefone, e-mail e logo. Usados nos documentos, no contrato da rematrícula e no topo do sistema.'
+                    . "\nCor do sistema: escolha uma das 12 cores (todas testadas para leitura); o sistema mostra na hora como fica e ela vale para todos da escola depois de 'Salvar' ('Restaurar padrão' volta ao azul). Muda botões, abas, seleções, menu e gráficos; cores de aviso (pago, atrasado, falta) e as do Max não mudam. No modo escuro o sistema usa um tom mais claro da mesma cor.",
             ],
             [
                 'id' => 'ano-letivo', 'area' => 'Administração', 'titulo' => 'Ano letivo, bimestres e turmas do ano novo',

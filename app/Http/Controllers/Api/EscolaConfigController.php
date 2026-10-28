@@ -35,6 +35,8 @@ class EscolaConfigController extends Controller
 
         try {
             $escola = $this->escolaConfig->salvar($request->all());
+        } catch (\DomainException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
         } catch (\Throwable $e) {
             return response()->json(['error' => 'Falha ao salvar configurações da escola.'], 500);
         }
