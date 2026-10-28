@@ -318,7 +318,8 @@ class AsaasCobrancaService
             'billingType'       => 'BOLETO', // boleto com QR Code Pix
             'value'             => $valor,
             'dueDate'           => $vencimento,
-            'description'       => mb_substr("{$p->aluno} — Parcela {$p->numero_parcela}/{$p->numero_parcelas} — {$p->plano_nome} ({$p->ano_letivo})", 0, 500),
+            'description'       => mb_substr("{$p->aluno} — " . ((int) $p->numero_parcela === 0 ? 'Taxa de matrícula' : "Parcela {$p->numero_parcela}/{$p->numero_parcelas}")
+                . " — {$p->plano_nome} ({$p->ano_letivo})", 0, 500),
             'externalReference' => $ref,
             'fine'              => ['value' => (float) $c['multa_percentual'], 'type' => 'PERCENTAGE'],
             'interest'          => ['value' => round((float) $c['juros_diario_percentual'] * 30, 4)],

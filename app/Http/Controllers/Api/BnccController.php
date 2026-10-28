@@ -62,9 +62,9 @@ class BnccController extends Controller
         $usuarioIdLogado = (int) ($jwtUser->id ?? 0);
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
 
-        $isAdmin = !empty(array_intersect(['Administrador', 'Diretoria'], $funcoes));
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isResponsavel = in_array('Responsável', $funcoes, true);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_VER);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isResponsavel = \App\Support\Papeis::ehResponsavel($funcoes);
 
         if (!$isAdmin && !$isProfessor && !$isResponsavel) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Você não tem permissão para consultar avaliações BNCC.'], 403);
@@ -110,9 +110,9 @@ class BnccController extends Controller
         $usuarioIdLogado = (int) ($jwtUser->id ?? 0);
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
 
-        $isAdmin = !empty(array_intersect(['Administrador', 'Diretoria'], $funcoes));
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isResponsavel = in_array('Responsável', $funcoes, true);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_VER);
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isResponsavel = \App\Support\Papeis::ehResponsavel($funcoes);
 
         if (!$isAdmin && !$isProfessor && !$isResponsavel) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Você não tem permissão para consultar avaliações BNCC.'], 403);
@@ -183,8 +183,8 @@ class BnccController extends Controller
         $usuarioId = (int) ($jwtUser->id ?? 0);
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
 
-        $isProfessor = in_array('Professor', $funcoes, true);
-        $isAdmin = !empty(array_intersect(['Administrador', 'Diretoria'], $funcoes));
+        $isProfessor = \App\Support\Papeis::ehProfessor($funcoes);
+        $isAdmin = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PEDAGOGICO_EDITAR);
 
         if (!$isProfessor && !$isAdmin) {
             return response()->json(['error' => 'Acesso negado.', 'message' => 'Apenas professores ou administradores podem registrar avaliações BNCC.'], 403);

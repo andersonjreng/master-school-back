@@ -29,12 +29,14 @@ class EscolaConfigController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::CONFIGURACOES_ESCOLA)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
         try {
             $escola = $this->escolaConfig->salvar($request->all());
+        } catch (\DomainException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
         } catch (\Throwable $e) {
             return response()->json(['error' => 'Falha ao salvar configurações da escola.'], 500);
         }
@@ -46,7 +48,7 @@ class EscolaConfigController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::CONFIGURACOES_ESCOLA)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
@@ -89,7 +91,7 @@ class EscolaConfigController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::CONFIGURACOES_ESCOLA)) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 

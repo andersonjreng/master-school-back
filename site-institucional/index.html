@@ -1,0 +1,1301 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MasterSchool — A escola inteira em um só lugar</title>
+<meta name="description" content="Secretaria, diário, boletim, financeiro e comunicação com as famílias numa plataforma só, com o Max, um assistente de IA que conhece a sua escola. Agende uma demonstração.">
+<meta property="og:title" content="MasterSchool — Você abriu uma escola para educar. Não para viver de planilha.">
+<meta property="og:description" content="Gestão escolar completa com assistente de IA. Agende uma demonstração.">
+<meta property="og:image" content="https://portalmasterschool.com.br/site-assets/favicon.png">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#050d1d">
+<link rel="icon" href="site-assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#050d1d; --ink-2:#0a1730; --ink-3:#10224a;
+  --cyan:#1ad1ff; --cyan-2:#0aa6d6; --teal:#3ecfd4;
+  --lime:#c4ff5e; --amber:#ffc65c; --coral:#ff6b5b; --green:#2fd88a;
+  --paper:#f4f7fb; --paper-2:#e8eef7; --text:#0b1a33; --muted:#5a6b85;
+  --line:rgba(255,255,255,.09);
+  --r:22px;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --font-d:"Sora",system-ui,sans-serif; --font-b:"Figtree",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+html,body{overflow-x:clip}
+body{font-family:var(--font-b);background:var(--ink);color:#e9f1ff;line-height:1.55;-webkit-font-smoothing:antialiased}
+img{max-width:100%;display:block}
+a{color:inherit}
+button{font:inherit;cursor:pointer}
+.wrap{width:min(1200px,100% - 40px);margin-inline:auto}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+::selection{background:var(--cyan);color:var(--ink)}
+
+/* ---------- Barra de progresso + brilho do cursor ---------- */
+.progress{position:fixed;top:0;left:0;height:3px;width:100%;transform-origin:0 50%;transform:scaleX(var(--p,0));background:linear-gradient(90deg,var(--cyan),var(--lime));z-index:200}
+.glow{position:fixed;width:520px;height:520px;border-radius:50%;pointer-events:none;z-index:1;background:radial-gradient(circle,rgba(26,209,255,.13),transparent 62%);transform:translate(-50%,-50%);left:var(--mx,-999px);top:var(--my,-999px);transition:opacity .4s;mix-blend-mode:screen}
+@media (hover:none){.glow{display:none}}
+
+/* ---------- Topo ---------- */
+.nav{position:fixed;inset:0 0 auto;z-index:100;transition:background .35s,border-color .35s,backdrop-filter .35s;border-bottom:1px solid transparent}
+.nav.scrolled{background:rgba(5,13,29,.9);backdrop-filter:blur(16px) saturate(1.4);border-color:var(--line)}
+.nav .wrap{display:flex;align-items:center;gap:28px;height:74px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-family:var(--font-d);font-weight:700;font-size:1.18rem;letter-spacing:-.01em}
+.brand img{width:34px;height:34px}
+.brand b{color:var(--cyan);font-weight:700}
+.nav-links{display:flex;gap:26px;margin-left:auto;list-style:none}
+.nav-links a{text-decoration:none;font-size:.94rem;color:rgba(233,241,255,.72);transition:color .2s}
+.nav-links a:hover{color:#fff}
+.nav-cta{margin-left:6px}
+.menu-btn{display:none;margin-left:auto;background:none;border:1px solid var(--line);color:#fff;width:44px;height:44px;border-radius:12px}
+
+/* ---------- Botões ---------- */
+.btn{--bg:var(--cyan);--fg:var(--ink);position:relative;display:inline-flex;align-items:center;gap:10px;padding:15px 26px;border-radius:999px;border:0;background:var(--bg);color:var(--fg);font-weight:700;font-size:1rem;text-decoration:none;transition:transform .25s var(--ease),box-shadow .3s;box-shadow:0 10px 30px -10px rgba(26,209,255,.7);isolation:isolate;overflow:hidden;white-space:nowrap}
+.btn::before{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.55) 50%,transparent 70%);transform:translateX(-120%);transition:transform .7s var(--ease);z-index:-1}
+.btn:hover::before{transform:translateX(120%)}
+.btn:hover{box-shadow:0 16px 40px -10px rgba(26,209,255,.9)}
+.btn svg{width:18px;height:18px;transition:transform .25s}
+.btn:hover svg{transform:translateX(3px)}
+.btn-ghost{--bg:transparent;--fg:#fff;box-shadow:none;border:1px solid rgba(255,255,255,.22)}
+.btn-ghost:hover{box-shadow:none;background:rgba(255,255,255,.06)}
+.btn-small{padding:11px 20px;font-size:.92rem}
+.btn-dark{--bg:var(--ink);--fg:#fff;box-shadow:0 10px 30px -12px rgba(5,13,29,.6)}
+
+/* ---------- Hero ---------- */
+.hero{position:relative;min-height:100vh;padding:130px 0 80px;overflow:hidden;isolation:isolate}
+#neural{position:absolute;inset:0;z-index:-1;opacity:.55}
+.aurora{position:absolute;inset:-20% -10% auto;height:120%;z-index:-2;filter:blur(70px);opacity:.75}
+.aurora i{position:absolute;border-radius:50%;animation:float 18s ease-in-out infinite alternate}
+.aurora i:nth-child(1){width:46vw;height:46vw;left:-8vw;top:-6vw;background:radial-gradient(circle,#0b4fb5,transparent 65%)}
+.aurora i:nth-child(2){width:38vw;height:38vw;right:-6vw;top:4vw;background:radial-gradient(circle,#0aa6d6,transparent 65%);animation-delay:-6s}
+.aurora i:nth-child(3){width:30vw;height:30vw;left:38vw;top:30vw;background:radial-gradient(circle,#2a1b8f,transparent 65%);animation-delay:-11s}
+@keyframes float{to{transform:translate(4vw,3vw) scale(1.12)}}
+.hero::after{content:"";position:absolute;inset:0;z-index:-1;background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:64px 64px;mask-image:radial-gradient(ellipse 70% 60% at 50% 30%,#000 20%,transparent 75%);opacity:.5}
+.hero-grid{display:grid;grid-template-columns:1.02fr 1fr;gap:56px;align-items:center}
+.eyebrow{display:inline-flex;align-items:center;gap:10px;padding:7px 14px 7px 8px;border-radius:999px;background:rgba(26,209,255,.08);border:1px solid rgba(26,209,255,.25);font-size:.86rem;color:#bfefff;margin-bottom:26px}
+.eyebrow .dot{width:22px;height:22px;border-radius:50%;background:var(--cyan);display:grid;place-items:center;color:var(--ink);font-size:.7rem;font-weight:800;box-shadow:0 0 0 0 rgba(26,209,255,.6);animation:pulse 2.2s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 10px rgba(26,209,255,0)}100%{box-shadow:0 0 0 0 rgba(26,209,255,0)}}
+h1,h2,h3{font-family:var(--font-d);letter-spacing:-.035em;line-height:1.04}
+.hero h1{font-size:clamp(2.3rem,4.4vw,3.9rem);font-weight:800}
+.hero h1 .line{display:block}
+/* Linha própria e sem quebra: a altura do título não muda quando a palavra troca.
+   --rot-fs é calculado no JS para a palavra mais longa caber na largura. */
+.rot{position:relative;display:block;width:max-content;white-space:nowrap;font-size:var(--rot-fs,1em);min-height:1.04em;color:transparent;background:linear-gradient(92deg,var(--cyan),var(--lime));-webkit-background-clip:text;background-clip:text}
+.rot::after{content:"";display:inline-block;width:.07em;height:.9em;margin-left:.06em;vertical-align:-.08em;background:var(--lime);animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.strike{position:relative;color:rgba(233,241,255,.55)}
+.strike::after{content:"";position:absolute;left:-2%;right:-2%;top:54%;height:.09em;background:var(--coral);transform-origin:0 50%;transform:scaleX(0);animation:strike .7s 1.3s var(--ease) forwards;border-radius:9px}
+@keyframes strike{to{transform:scaleX(1)}}
+.lead{font-size:clamp(1.05rem,1.4vw,1.22rem);color:rgba(233,241,255,.74);max-width:560px;margin:26px 0 36px}
+.lead strong{color:#fff;font-weight:600}
+.hero-ctas{display:flex;flex-wrap:wrap;gap:14px}
+.hero-note{margin-top:28px;display:flex;flex-wrap:wrap;gap:20px;font-size:.88rem;color:rgba(233,241,255,.6)}
+.hero-note span{display:inline-flex;align-items:center;gap:8px}
+.hero-note svg{width:16px;height:16px;color:var(--green)}
+
+/* Palco 3D do hero */
+.stage{position:relative;perspective:1600px;height:560px}
+.stage-inner{position:absolute;inset:0;transform-style:preserve-3d;transform:rotateX(calc(8deg + var(--ry,0deg))) rotateY(calc(-14deg + var(--rx,0deg)));transition:transform .5s var(--ease)}
+.app{position:absolute;left:4%;top:9%;width:92%;height:78%;border-radius:18px;background:#f6f9fd;box-shadow:0 60px 120px -30px rgba(0,0,0,.75),0 0 0 1px rgba(255,255,255,.08);overflow:hidden;display:grid;grid-template-columns:62px 1fr;color:var(--text);transform:translateZ(0)}
+.app-side{background:#0f1f3a;display:flex;flex-direction:column;align-items:center;gap:16px;padding:16px 0}
+.app-side img{width:30px}
+.app-side i{width:26px;height:6px;border-radius:9px;background:rgba(255,255,255,.18)}
+.app-side i.on{background:var(--cyan)}
+.app-main{padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.app-hello{border-radius:14px;padding:14px 16px;background:linear-gradient(120deg,#0d3f8f,#1767c9);color:#fff}
+.app-hello small{opacity:.75;font-size:.66rem}
+.app-hello b{display:block;font-family:var(--font-d);font-size:1rem;margin:2px 0 8px}
+.app-hello p{font-size:.7rem;background:rgba(255,255,255,.14);border-radius:9px;padding:7px 9px;display:flex;gap:7px;align-items:center}
+.app-hello p img{width:18px;height:18px;border-radius:50%;background:#0b1a33}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.kpi{background:#fff;border-radius:11px;padding:9px 10px;box-shadow:0 1px 0 #e3e9f3}
+.kpi small{font-size:.54rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.kpi b{display:block;font-family:var(--font-d);font-size:1.05rem;margin-top:2px}
+.kpi .bar{height:4px;border-radius:9px;background:#e6edf6;margin-top:6px;overflow:hidden}
+.kpi .bar i{display:block;height:100%;width:var(--w);background:var(--c,#1767c9);border-radius:9px;transform-origin:0;animation:grow 1.4s .6s var(--ease) both}
+@keyframes grow{from{transform:scaleX(0)}}
+.chart{flex:1;background:#fff;border-radius:11px;padding:10px 12px;box-shadow:0 1px 0 #e3e9f3;display:flex;flex-direction:column;min-height:0}
+.chart small{font-size:.62rem;font-weight:700;color:var(--muted)}
+.bars{flex:1;display:flex;align-items:flex-end;gap:7px;padding-top:8px}
+.bars i{flex:1;border-radius:6px 6px 3px 3px;background:linear-gradient(180deg,#38b6ff,#1767c9);height:var(--h);transform-origin:bottom;animation:rise 1.2s var(--ease) both}
+.bars i:nth-child(odd){background:linear-gradient(180deg,#7be3ff,#2fa8e0)}
+.bars i:nth-child(n){animation-delay:calc(var(--i) * 70ms + .5s)}
+@keyframes rise{from{transform:scaleY(0)}}
+.float{position:absolute;transform-style:preserve-3d;border-radius:16px;background:rgba(12,26,52,.82);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(14px);box-shadow:0 30px 60px -20px rgba(0,0,0,.6);color:#fff;padding:12px 14px;display:flex;gap:11px;align-items:center;font-size:.82rem;animation:bob 6s ease-in-out infinite}
+.float b{display:block;font-size:.86rem}
+.float small{color:rgba(233,241,255,.66)}
+.float .ic{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex-shrink:0}
+.float .ic svg{width:19px;height:19px}
+.f1{right:-3%;top:2%;transform:translateZ(90px);--d:0s}
+.f2{left:-6%;top:44%;transform:translateZ(130px);animation-delay:-2s}
+.f3{right:2%;bottom:3%;transform:translateZ(110px);animation-delay:-4s}
+@keyframes bob{50%{translate:0 -12px}}
+.maxorb{position:absolute;left:-2%;bottom:-2%;width:118px;height:118px;transform:translateZ(170px);border-radius:50%;background:radial-gradient(circle at 50% 40%,#13305f,#06122a 70%);border:1px solid rgba(26,209,255,.4);box-shadow:0 0 0 8px rgba(26,209,255,.06),0 0 60px rgba(26,209,255,.45);display:grid;place-items:center;animation:bob 7s ease-in-out infinite -1s}
+.maxorb img{width:84%}
+.maxorb::after{content:"Oi! Eu sou o Max.";position:absolute;left:100%;top:6px;margin-left:10px;white-space:nowrap;background:#fff;color:var(--ink);font-weight:700;font-size:.8rem;padding:8px 12px;border-radius:14px 14px 14px 4px;box-shadow:0 14px 30px -12px rgba(0,0,0,.5)}
+
+/* ---------- Faixa rolante ---------- */
+.ribbon{position:relative;padding:22px 0;background:var(--lime);color:var(--ink);transform:rotate(-1.6deg);margin:-30px -2vw 0;z-index:5;overflow:hidden;box-shadow:0 20px 50px -20px rgba(196,255,94,.5)}
+.ribbon.alt{background:var(--cyan);transform:rotate(1.2deg);margin-top:-58px;z-index:4;opacity:.9}
+.track{display:flex;width:max-content;animation:marquee 38s linear infinite}
+.ribbon.alt .track{animation-direction:reverse;animation-duration:46s}
+.track span{font-family:var(--font-d);font-weight:700;font-size:1.25rem;padding:0 22px;display:inline-flex;align-items:center;gap:22px;white-space:nowrap;letter-spacing:-.02em}
+.track span::after{content:"✦";font-size:.9rem}
+@keyframes marquee{to{transform:translateX(-50%)}}
+
+/* ---------- Seções gerais ---------- */
+section{position:relative}
+.light{background:var(--paper);color:var(--text)}
+.pad{padding:130px 0}
+.kicker{display:inline-flex;align-items:center;gap:8px;font-size:.82rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan-2);margin-bottom:18px}
+.kicker::before{content:"";width:26px;height:2px;background:currentColor;border-radius:9px}
+.dark .kicker{color:var(--cyan)}
+h2{font-size:clamp(2.1rem,4.4vw,3.7rem);font-weight:800}
+h2 em{font-style:normal;background:linear-gradient(92deg,var(--cyan-2),#5a5bff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.dark h2 em{background:linear-gradient(92deg,var(--cyan),var(--lime));-webkit-background-clip:text;background-clip:text}
+.sub{font-size:1.15rem;color:var(--muted);max-width:640px;margin-top:20px}
+.dark .sub{color:rgba(233,241,255,.7)}
+.center{text-align:center}
+.center .sub{margin-inline:auto}
+
+/* Revelação ao rolar */
+.rv{opacity:0;transform:translateY(34px);transition:opacity .9s var(--ease),transform .9s var(--ease);transition-delay:var(--dl,0s)}
+.rv.in{opacity:1;transform:none}
+.words .w{display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.08em}
+.words .w>i{display:inline-block;font-style:inherit;transform:translateY(105%);transition:transform .9s var(--ease);transition-delay:calc(var(--k) * 45ms)}
+.words.in .w>i{transform:none}
+
+/* ---------- Do caos à ordem ---------- */
+.chaos{height:260vh;background:var(--paper);color:var(--text)}
+.chaos-sticky{position:sticky;top:0;height:100vh;display:grid;grid-template-columns:.9fr 1.1fr;align-items:center;gap:40px;overflow:hidden}
+.chaos-copy h2{font-size:clamp(2rem,3.8vw,3.2rem)}
+.chaos-copy .sub{font-size:1.08rem}
+.chaos-state{margin-top:30px;display:flex;gap:10px;align-items:center;font-weight:700;font-size:.95rem}
+.chaos-state .pill{padding:8px 14px;border-radius:999px;background:#ffe3df;color:#c0392b;transition:all .4s}
+.chaos-state .pill.ok{background:#d9f9e8;color:#14804a}
+.board{position:relative;height:78vh;max-height:620px}
+.mold{position:absolute;left:50%;top:50%;width:min(470px,92%);height:430px;translate:-50% -50%;border-radius:26px;background:#fff;box-shadow:0 40px 90px -40px rgba(11,26,51,.45);opacity:var(--p);scale:calc(.86 + var(--p) * .14);border:1px solid #e3eaf4}
+.mold header{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #edf1f7;font-family:var(--font-d);font-weight:700}
+.mold header img{width:26px}
+.mold header span{margin-left:auto;font-family:var(--font-b);font-size:.75rem;color:#14804a;background:#d9f9e8;padding:4px 10px;border-radius:99px}
+.chip-t{position:absolute;left:50%;top:50%;width:210px;padding:13px 14px;border-radius:14px;background:#fff;border:1px solid #e3eaf4;box-shadow:0 18px 40px -22px rgba(11,26,51,.55);display:flex;gap:11px;align-items:center;font-weight:600;font-size:.88rem;
+  --x:calc(var(--sx) * (1 - var(--p)) + var(--ex) * var(--p));
+  --y:calc(var(--sy) * (1 - var(--p)) + var(--ey) * var(--p));
+  transform:translate(calc(var(--x) * 1px - 50%),calc(var(--y) * 1px - 50%)) rotate(calc(var(--sr) * (1 - var(--p)) * 1deg));will-change:transform}
+.chip-t .ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex-shrink:0;font-size:1.05rem}
+.chip-t small{display:block;font-weight:500;color:var(--muted);font-size:.74rem}
+.chip-t .old,.chip-t .new{min-width:0}
+.chip-t b,.chip-t small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.chip-t .old{opacity:calc(1 - var(--p) * 2)}
+.chip-t .new{position:absolute;left:59px;right:12px;opacity:calc(var(--p) * 2 - 1)}
+
+/* ---------- Perfis ---------- */
+.roles{display:grid;grid-template-columns:330px 1fr;gap:40px;margin-top:60px;align-items:start}
+.role-tabs{display:flex;flex-direction:column;gap:8px;position:sticky;top:100px}
+.role-tab{position:relative;text-align:left;background:transparent;border:1px solid transparent;border-radius:18px;padding:18px 20px;color:var(--text);transition:all .3s;overflow:hidden}
+.role-tab b{font-family:var(--font-d);font-size:1.12rem;display:flex;align-items:center;gap:10px}
+.role-tab small{display:block;color:var(--muted);font-size:.9rem;margin-top:4px;max-height:0;opacity:0;transition:all .4s}
+.role-tab .em{font-size:1.3rem}
+.role-tab[aria-selected="true"]{background:#fff;border-color:#e3eaf4;box-shadow:0 20px 40px -26px rgba(11,26,51,.4)}
+.role-tab[aria-selected="true"] small{max-height:60px;opacity:1}
+.role-tab .tm{position:absolute;left:0;bottom:0;height:3px;width:100%;background:var(--cyan-2);transform-origin:0;transform:scaleX(0)}
+.role-tab[aria-selected="true"] .tm.run{animation:tm 7s linear forwards}
+@keyframes tm{to{transform:scaleX(1)}}
+.role-panel{display:none;grid-template-columns:1.15fr .85fr;gap:28px;align-items:center}
+.role-panel.on{display:grid;animation:panelIn .6s var(--ease)}
+@keyframes panelIn{from{opacity:0;transform:translateY(16px)}}
+.role-panel h3{font-size:1.75rem;margin-bottom:14px}
+.role-panel ul{list-style:none;display:flex;flex-direction:column;gap:14px}
+.role-panel li{display:flex;gap:12px;color:#33445f}
+.role-panel li svg{width:22px;height:22px;flex-shrink:0;color:var(--cyan-2);margin-top:2px}
+.mock{border-radius:22px;background:#fff;border:1px solid #e3eaf4;box-shadow:0 40px 80px -40px rgba(11,26,51,.45);padding:20px;min-height:360px;position:relative;overflow:hidden}
+.mock h4{font-family:var(--font-d);font-size:.98rem;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.mock h4 .tag{margin-left:auto;font-family:var(--font-b);font-size:.7rem;font-weight:700;padding:4px 10px;border-radius:99px;background:#e6f6ff;color:#0a7fb0}
+.mrow{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:12px;background:#f6f9fd;margin-bottom:8px;font-size:.88rem;opacity:0;transform:translateX(-14px);animation:rowIn .5s var(--ease) forwards;animation-delay:calc(var(--i) * 110ms + .15s)}
+@keyframes rowIn{to{opacity:1;transform:none}}
+.mrow .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:.72rem;font-weight:700;color:#fff;flex-shrink:0}
+.mrow .st{margin-left:auto;font-size:.72rem;font-weight:700;padding:4px 9px;border-radius:99px}
+.st.ok{background:#d9f9e8;color:#14804a}.st.warn{background:#fff1d6;color:#a86a00}.st.bad{background:#ffe3df;color:#c0392b}.st.info{background:#e6f6ff;color:#0a7fb0}
+.toggle{width:38px;height:22px;border-radius:99px;background:#d6dfec;position:relative;margin-left:auto;flex-shrink:0;transition:background .3s}
+.toggle::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .3s var(--ease);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.toggle.on{background:var(--green)}.toggle.on::after{transform:translateX(16px)}
+.toggle.off{background:var(--coral)}
+.big-kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.big-kpis div{background:#f6f9fd;border-radius:14px;padding:14px}
+.big-kpis small{font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.big-kpis b{display:block;font-family:var(--font-d);font-size:1.7rem;margin-top:4px}
+.big-kpis b sup{font-size:.8rem;color:var(--green);margin-left:4px}
+.spark{height:90px;display:flex;align-items:flex-end;gap:5px}
+.spark i{flex:1;background:linear-gradient(180deg,#5ad0ff,#1767c9);border-radius:5px;height:var(--h);transform-origin:bottom;animation:rise 1s var(--ease) both;animation-delay:calc(var(--i) * 50ms)}
+.phone{width:250px;height:440px;margin:0 auto;border-radius:38px;background:#0b1a33;padding:12px;box-shadow:0 40px 80px -30px rgba(11,26,51,.6)}
+.phone-in{height:100%;border-radius:28px;background:linear-gradient(180deg,#e9f3ff,#f8fbff);padding:30px 12px 12px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.notif{background:#fff;border-radius:14px;padding:10px 11px;font-size:.76rem;display:flex;gap:9px;box-shadow:0 8px 20px -14px rgba(11,26,51,.5);opacity:0;transform:translateY(-12px) scale(.96);animation:notif .55s var(--ease) forwards;animation-delay:calc(var(--i) * .7s + .2s)}
+.notif .ic{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;flex-shrink:0;font-size:.9rem}
+.notif b{display:block;font-size:.78rem}
+@keyframes notif{to{opacity:1;transform:none}}
+.docgen{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.doc{aspect-ratio:3/4;border-radius:10px;background:#f6f9fd;border:1px solid #e3eaf4;padding:10px;display:flex;flex-direction:column;gap:5px;position:relative;opacity:0;animation:rowIn .5s var(--ease) forwards;animation-delay:calc(var(--i) * 90ms + .1s)}
+.doc i{height:5px;border-radius:4px;background:#d9e2ef}
+.doc i:first-child{width:60%;background:#1767c9;height:6px}
+.doc span{margin-top:auto;font-size:.66rem;font-weight:700;color:#33445f;line-height:1.2}
+
+/* ---------- Max ---------- */
+.dark{background:var(--ink);color:#e9f1ff}
+.max-sec{overflow:hidden}
+.max-sec::before{content:"";position:absolute;width:900px;height:900px;left:50%;top:40%;translate:-50% -50%;background:radial-gradient(circle,rgba(26,209,255,.18),transparent 60%);pointer-events:none}
+.max-grid{display:grid;grid-template-columns:.95fr 1.05fr;gap:60px;align-items:center;position:relative}
+.owl{position:relative;width:min(380px,80%);aspect-ratio:1;margin:0 auto}
+.owl img{position:relative;z-index:2;width:100%;filter:drop-shadow(0 30px 60px rgba(26,209,255,.35));animation:bob 6s ease-in-out infinite}
+.owl .ring{position:absolute;inset:-6%;border-radius:50%;border:1px dashed rgba(26,209,255,.35);animation:spin 40s linear infinite}
+.owl .ring:nth-child(2){inset:8%;border-style:solid;border-color:rgba(196,255,94,.18);animation-duration:28s;animation-direction:reverse}
+.owl .orb{position:absolute;width:12px;height:12px;border-radius:50%;background:var(--lime);top:-1%;left:50%;box-shadow:0 0 20px var(--lime)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.max-caps{display:flex;flex-wrap:wrap;gap:10px;margin-top:30px}
+.max-caps span{padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);font-size:.9rem;color:rgba(233,241,255,.8)}
+.chat{margin-top:46px;border-radius:24px;background:rgba(255,255,255,.035);border:1px solid var(--line);padding:22px;backdrop-filter:blur(10px)}
+.chat-head{display:flex;align-items:center;gap:12px;padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:16px}
+.chat-head img{width:40px;height:40px;border-radius:50%;background:#0d2148;border:1px solid rgba(26,209,255,.4)}
+.chat-head b{font-family:var(--font-d)}
+.chat-head small{display:block;color:var(--green);font-size:.78rem}
+.chat-log{min-height:210px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:88%;padding:12px 15px;border-radius:18px;font-size:.95rem;animation:panelIn .4s var(--ease)}
+.msg.me{align-self:flex-end;background:var(--cyan);color:var(--ink);font-weight:600;border-bottom-right-radius:6px}
+.msg.max{align-self:flex-start;background:rgba(255,255,255,.07);border-bottom-left-radius:6px;color:#e9f1ff}
+.msg.max b{color:var(--lime);font-weight:700}
+.typing{display:inline-flex;gap:4px;padding:16px}
+.typing i{width:7px;height:7px;border-radius:50%;background:rgba(233,241,255,.6);animation:typ 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes typ{50%{transform:translateY(-5px);opacity:.4}}
+.chat-q{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.chat-q button{background:transparent;border:1px solid rgba(26,209,255,.35);color:#bfefff;padding:9px 14px;border-radius:999px;font-size:.88rem;transition:all .2s}
+.chat-q button:hover,.chat-q button[aria-pressed="true"]{background:rgba(26,209,255,.14);color:#fff}
+.chat-note{font-size:.78rem;color:rgba(233,241,255,.45);margin-top:14px}
+
+/* ---------- Bento ---------- */
+.bento{display:grid;grid-template-columns:repeat(6,1fr);grid-auto-rows:minmax(210px,auto);gap:16px;margin-top:60px}
+.tile{position:relative;border-radius:var(--r);background:#fff;border:1px solid #e3eaf4;padding:26px;overflow:hidden;transition:transform .4s var(--ease),box-shadow .4s;transform-style:preserve-3d}
+.tile:hover{box-shadow:0 40px 70px -40px rgba(11,26,51,.45)}
+.tile::after{content:"";position:absolute;inset:0;background:radial-gradient(400px circle at var(--tx,50%) var(--ty,50%),rgba(26,209,255,.12),transparent 45%);opacity:0;transition:opacity .3s;pointer-events:none}
+.tile:hover::after{opacity:1}
+.tile h3{font-size:1.28rem;margin-bottom:8px}
+.tile p{color:var(--muted);font-size:.96rem;max-width:420px}
+.tile .ico{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;margin-bottom:18px}
+.tile .ico svg{width:24px;height:24px}
+.t-wide{grid-column:span 4}.t-mid{grid-column:span 3}.t-sm{grid-column:span 2}
+.t-dark{background:var(--ink-2);color:#fff;border-color:transparent}
+.t-dark p{color:rgba(233,241,255,.68)}
+.t-cyan{background:linear-gradient(140deg,#0aa6d6,#1767c9);color:#fff;border-color:transparent}
+.t-cyan p{color:rgba(255,255,255,.82)}
+.t-lime{background:var(--lime);border-color:transparent}
+.t-lime p{color:#2c3d14}
+.wa-demo{position:absolute;right:22px;bottom:22px;width:min(300px,52%);display:flex;flex-direction:column;gap:8px}
+.wa{background:#dcf8c6;color:#0b1a33;padding:9px 12px;border-radius:12px 12px 4px 12px;font-size:.8rem;box-shadow:0 6px 16px -10px rgba(0,0,0,.5);transform-origin:right bottom;animation:waIn 7.5s var(--ease) infinite;animation-delay:calc(var(--i) * 1.1s)}
+.wa small{display:block;text-align:right;font-size:.62rem;color:#5b7a4f}
+@keyframes waIn{0%,4%{opacity:0;transform:scale(.6)}10%,86%{opacity:1;transform:none}96%,100%{opacity:0}}
+.pix{position:absolute;right:24px;top:24px;width:86px;height:86px;border-radius:14px;background:#fff;padding:8px;display:grid;grid-template-columns:repeat(9,1fr);gap:2px;box-shadow:0 10px 30px -10px rgba(0,0,0,.4)}
+.pix i{background:#0b1a33;border-radius:1px}
+.pix i.o{background:transparent}
+.lock{position:absolute;right:22px;top:20px;font-family:var(--font-d);font-weight:800;font-size:3.2rem;letter-spacing:-.05em;color:rgba(255,255,255,.07);line-height:1;pointer-events:none}
+
+/* ---------- Linha do tempo ---------- */
+.day{display:grid;grid-template-columns:1fr 1fr;gap:70px;margin-top:70px;position:relative}
+.day-line{position:absolute;left:50%;top:0;bottom:0;width:2px;background:var(--line);translate:-50%}
+.day-line i{position:absolute;inset:0;background:linear-gradient(var(--cyan),var(--lime));transform-origin:top;transform:scaleY(var(--fill,0))}
+.ev{position:relative;align-self:start;padding:24px 26px;border-radius:20px;background:rgba(255,255,255,.035);border:1px solid var(--line)}
+.ev:nth-child(even){grid-column:1}.ev:nth-child(odd){grid-column:2;margin-top:110px}
+.ev time{font-family:var(--font-d);font-weight:800;font-size:1.9rem;color:var(--cyan);letter-spacing:-.03em}
+.ev h3{font-size:1.15rem;margin:6px 0 6px}
+.ev p{color:rgba(233,241,255,.66);font-size:.95rem}
+.ev .who{display:inline-block;margin-top:12px;font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--lime)}
+.ev::before{content:"";position:absolute;top:34px;width:14px;height:14px;border-radius:50%;background:var(--ink);border:3px solid var(--cyan)}
+.ev:nth-child(even)::before{right:-43px}.ev:nth-child(odd)::before{left:-43px}
+
+/* ---------- Como funciona ---------- */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:60px;counter-reset:s}
+.step{position:relative;padding:34px 28px;border-radius:var(--r);background:#fff;border:1px solid #e3eaf4;overflow:hidden}
+.step::before{counter-increment:s;content:"0" counter(s);font-family:var(--font-d);font-weight:800;font-size:5rem;letter-spacing:-.06em;color:#eef3fa;position:absolute;right:16px;top:-6px;line-height:1}
+.step h3{font-size:1.3rem;margin:16px 0 10px;position:relative}
+.step p{color:var(--muted);position:relative}
+.step .ico{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:#e6f6ff;color:#0a7fb0;position:relative}
+.step .ico svg{width:26px;height:26px}
+.promise{margin-top:24px;padding:26px 30px;border-radius:var(--r);background:var(--ink);color:#fff;display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.promise p{flex:1;min-width:260px;color:rgba(233,241,255,.75)}
+.promise strong{color:#fff;font-family:var(--font-d);font-size:1.15rem;display:block;margin-bottom:4px}
+
+/* ---------- Formulário ---------- */
+.cta-sec{background:radial-gradient(ellipse at 20% 0%,#0d3f8f 0%,transparent 55%),radial-gradient(ellipse at 100% 100%,#0a6f8f 0%,transparent 50%),var(--ink);overflow:hidden}
+.cta-grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:60px;align-items:start}
+.cta-grid h2{font-size:clamp(2.2rem,4.6vw,3.9rem)}
+.perks{list-style:none;margin-top:30px;display:flex;flex-direction:column;gap:14px}
+.perks li{display:flex;gap:12px;align-items:flex-start;color:rgba(233,241,255,.8)}
+.perks svg{width:22px;height:22px;color:var(--lime);flex-shrink:0;margin-top:1px}
+.contact-alt{margin-top:34px;padding-top:26px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px;font-size:.95rem;color:rgba(233,241,255,.7)}
+.contact-alt a{color:#fff;font-weight:600;text-decoration:none}
+.form-card{position:relative;border-radius:28px;background:#fff;color:var(--text);padding:34px;box-shadow:0 60px 120px -40px rgba(0,0,0,.7)}
+.steps-bar{display:flex;gap:8px;margin-bottom:26px}
+.steps-bar i{flex:1;height:5px;border-radius:9px;background:#e6edf6;overflow:hidden;position:relative}
+.steps-bar i::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--cyan-2),#1767c9);transform:scaleX(0);transform-origin:0;transition:transform .5s var(--ease)}
+.steps-bar i.done::after{transform:scaleX(1)}
+.fstep{display:none}
+.fstep.on{display:block;animation:panelIn .5s var(--ease)}
+.fstep h3{font-size:1.45rem;margin-bottom:6px}
+.fstep>p{color:var(--muted);margin-bottom:22px}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field.full{grid-column:1/-1}
+.field label,.legend{font-weight:700;font-size:.88rem;color:#24344f}
+.opt{font-weight:500;color:var(--muted)}
+.field input,.field select,.field textarea{font:inherit;font-size:1rem;padding:13px 14px;border-radius:12px;border:1.5px solid #d6dfec;background:#f9fbfe;color:var(--text);transition:border-color .2s,box-shadow .2s;width:100%}
+.field textarea{min-height:96px;resize:vertical}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--cyan-2);box-shadow:0 0 0 4px rgba(10,166,214,.15);background:#fff}
+.field .err{display:none;color:#c0392b;font-size:.8rem;font-weight:600}
+.field.invalid input,.field.invalid select{border-color:#e74c3c}
+.field.invalid .err{display:block}
+.choice{display:flex;flex-wrap:wrap;gap:8px}
+.choice label{position:relative;cursor:pointer}
+.choice input{position:absolute;opacity:0;pointer-events:none}
+.choice span{display:inline-block;padding:10px 14px;border-radius:999px;border:1.5px solid #d6dfec;font-size:.9rem;font-weight:600;color:#33445f;transition:all .2s;user-select:none}
+.choice input:checked+span{background:var(--ink);border-color:var(--ink);color:#fff}
+.choice input:focus-visible+span{box-shadow:0 0 0 4px rgba(10,166,214,.25)}
+.choice.invalid span{border-color:#e74c3c}
+.consent{display:flex;gap:10px;align-items:flex-start;font-size:.86rem;color:#33445f;margin-top:16px}
+.consent input{width:18px;height:18px;margin-top:2px;accent-color:#1767c9;flex-shrink:0}
+.consent.invalid{color:#c0392b}
+.factions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:24px;flex-wrap:wrap}
+.back{background:none;border:0;color:var(--muted);font-weight:600;padding:10px 4px}
+.back:hover{color:var(--text)}
+.fstatus{color:#c0392b;font-weight:600;font-size:.9rem;margin-top:14px;min-height:1.2em}
+.done-box{text-align:center;padding:20px 0}
+.done-box .check{width:84px;height:84px;margin:0 auto 20px;border-radius:50%;background:#d9f9e8;display:grid;place-items:center}
+.done-box .check svg{width:44px;height:44px;color:#14804a;stroke-dasharray:40;stroke-dashoffset:40;animation:draw .8s .2s var(--ease) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.done-box h3{font-size:1.7rem;margin-bottom:10px}
+.done-box p{color:var(--muted);margin-bottom:24px}
+#confetti{position:fixed;inset:0;pointer-events:none;z-index:300}
+
+/* ---------- FAQ ---------- */
+.faq{max-width:860px;margin:60px auto 0;display:flex;flex-direction:column;gap:12px}
+.faq details{border-radius:18px;background:#fff;border:1px solid #e3eaf4;padding:0 24px;transition:box-shadow .3s}
+.faq details[open]{box-shadow:0 24px 50px -34px rgba(11,26,51,.45)}
+.faq summary{list-style:none;cursor:pointer;padding:22px 0;font-family:var(--font-d);font-weight:700;font-size:1.08rem;display:flex;justify-content:space-between;gap:16px;align-items:center}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";font-size:1.6rem;font-weight:500;color:var(--cyan-2);transition:transform .3s}
+.faq details[open] summary::after{transform:rotate(45deg)}
+.faq details p{padding:0 0 22px;color:var(--muted);max-width:720px}
+
+/* ---------- Rodapé ---------- */
+.final{padding:120px 0 0;text-align:center;overflow:hidden}
+.final h2{font-size:clamp(2.4rem,6vw,5.2rem)}
+.final .hero-ctas{justify-content:center;margin-top:36px}
+.giant{font-family:var(--font-d);font-weight:800;font-size:clamp(3rem,12.4vw,12rem);letter-spacing:-.07em;line-height:.8;margin-top:90px;text-align:center;background:linear-gradient(180deg,rgba(26,209,255,.22),rgba(26,209,255,0) 80%);-webkit-background-clip:text;background-clip:text;color:transparent;user-select:none;white-space:nowrap}
+footer{border-top:1px solid var(--line);padding:34px 0;font-size:.9rem;color:rgba(233,241,255,.55)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:20px 34px;align-items:center}
+footer a{text-decoration:none;color:rgba(233,241,255,.75)}
+footer a:hover{color:#fff}
+footer .sp{margin-left:auto}
+.pais-link{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;border:1px solid var(--line)}
+.wa-float{position:fixed;right:20px;bottom:20px;z-index:90;width:58px;height:58px;border-radius:50%;background:#25d366;display:grid;place-items:center;box-shadow:0 14px 34px -10px rgba(37,211,102,.7);transition:transform .25s var(--ease)}
+.wa-float:hover{transform:scale(1.08)}
+.wa-float svg{width:30px;height:30px;color:#fff}
+
+/* ---------- Responsivo ---------- */
+@media (max-width:1060px){
+  .hero-grid,.max-grid,.cta-grid{grid-template-columns:1fr}
+  .stage{height:480px;max-width:640px;margin:10px auto 0;width:100%}
+  .roles{grid-template-columns:1fr}
+  .role-tabs{position:static;flex-direction:row;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+  .role-tab{flex:0 0 auto}
+  .role-tab small{display:none}
+  .role-panel{grid-template-columns:1fr}
+  .chaos-sticky{grid-template-columns:1fr;align-content:center;gap:10px;padding-top:70px}
+  .chaos-copy .sub{display:none}
+  .board{height:56vh}
+  .bento{grid-template-columns:repeat(2,1fr)}
+  .t-wide,.t-mid{grid-column:span 2}.t-sm{grid-column:span 1}
+}
+@media (max-width:820px){
+  .nav-links,.nav-cta{display:none}
+  .menu-btn{display:grid;place-items:center}
+  .nav.open{background:rgba(5,13,29,.97)}
+  .nav.open .nav-links{display:flex;position:absolute;top:74px;left:0;right:0;flex-direction:column;gap:0;padding:10px 20px 24px;background:rgba(5,13,29,.97);border-bottom:1px solid var(--line)}
+  .nav.open .nav-links a{display:block;padding:14px 0;font-size:1.08rem;border-bottom:1px solid var(--line)}
+  .pad{padding:90px 0}
+  .day{grid-template-columns:1fr;gap:16px;padding-left:30px}
+  .day-line{left:6px}
+  .ev:nth-child(n){grid-column:1;margin-top:0}
+  .ev:nth-child(n)::before{left:-32px;right:auto}
+  .steps{grid-template-columns:1fr}
+  .fgrid{grid-template-columns:1fr}
+  .form-card{padding:24px 20px}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .chart{display:none}
+  .f2{left:0}
+  .maxorb{width:92px;height:92px;left:2%}
+  .maxorb::after{font-size:.72rem}
+  .wa-demo{position:static;width:100%;margin-top:18px}
+}
+@media (max-width:560px){
+  .wrap{width:calc(100% - 32px)}
+  .hero{padding-top:110px}
+  .stage{height:400px}
+  .app{left:0;width:100%;top:12%;height:70%;grid-template-columns:44px 1fr}
+  .f1{right:-2%;top:0}.f3{right:0;bottom:4%}
+  .float{font-size:.74rem;padding:9px 10px}
+  .float .ic{width:30px;height:30px}
+  .bento{grid-template-columns:1fr}
+  .t-wide,.t-mid,.t-sm{grid-column:span 1}
+  .btn{padding:14px 22px}
+  .hero-ctas .btn{width:100%;justify-content:center}
+  .chip-t{width:168px;font-size:.8rem;padding:10px}
+  .ribbon .track span{font-size:1.05rem}
+  footer .sp{margin-left:0}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .rv,.words .w>i{opacity:1;transform:none}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="glow" id="glow"></div>
+<canvas id="confetti"></canvas>
+
+<!-- ================= TOPO ================= -->
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#topo" aria-label="MasterSchool, início"><img src="site-assets/marca-128.png" alt=""><span>Master<b>School</b></span></a>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#produto">Produto</a></li>
+      <li><a href="#max">Max IA</a></li>
+      <li><a href="#perfis">Para quem</a></li>
+      <li><a href="#como">Como funciona</a></li>
+      <li><a href="#faq">Dúvidas</a></li>
+    </ul>
+    <a class="btn btn-small nav-cta mag" href="#contato">Agendar demonstração</a>
+    <button class="menu-btn" id="menuBtn" aria-label="Abrir menu" aria-expanded="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  </div>
+</header>
+
+<main id="topo">
+<!-- ================= HERO ================= -->
+<section class="hero">
+  <div class="aurora"><i></i><i></i><i></i></div>
+  <canvas id="neural" aria-hidden="true"></canvas>
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow rv"><span class="dot">IA</span>Gestão escolar completa, com assistente de inteligência artificial</div>
+      <h1 class="words" data-split>
+        <span class="line">Você abriu uma escola para educar.</span>
+        <span class="line">Não para viver de <span class="rot" id="rot">planilha</span></span>
+      </h1>
+      <p class="lead rv" style="--dl:.35s">O MasterSchool junta <strong>secretaria, diário, boletim, financeiro e comunicação com as famílias</strong> em uma plataforma só. E traz o <strong>Max</strong>, um assistente de IA que conhece cada turma da sua escola.</p>
+      <div class="hero-ctas rv" style="--dl:.5s">
+        <a class="btn mag" href="#contato">Quero ver funcionando <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn btn-ghost mag" href="#max">Conhecer o Max</a>
+      </div>
+      <div class="hero-note rv" style="--dl:.65s">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l5 5L20 7"/></svg>Sem instalar nada</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l5 5L20 7"/></svg>Computador, tablet e celular</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l5 5L20 7"/></svg>Implantação feita com você</span>
+      </div>
+    </div>
+
+    <div class="stage rv" id="stage" style="--dl:.25s" aria-hidden="true">
+      <div class="stage-inner" id="stageInner">
+        <div class="app">
+          <div class="app-side"><img src="site-assets/marca-128.png" alt=""><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="app-main">
+            <div class="app-hello"><small>Segunda-feira · Painel da Direção</small><b>Bom dia, Diretora Ana</b><p><img src="site-assets/max.png" alt="">Max: 3 turmas ficaram abaixo de 75% de frequência esta semana. Quer ver quais?</p></div>
+            <div class="kpis">
+              <div class="kpi"><small>Alunos</small><b data-count="412">0</b><div class="bar"><i style="--w:82%"></i></div></div>
+              <div class="kpi"><small>Frequência</small><b data-count="93" data-suffix="%">0</b><div class="bar"><i style="--w:93%;--c:#2fd88a"></i></div></div>
+              <div class="kpi"><small>Em dia</small><b data-count="96" data-suffix="%">0</b><div class="bar"><i style="--w:96%;--c:#0aa6d6"></i></div></div>
+              <div class="kpi"><small>Leram o aviso</small><b data-count="87" data-suffix="%">0</b><div class="bar"><i style="--w:87%;--c:#ffb020"></i></div></div>
+            </div>
+            <div class="chart"><small>Recebimentos do mês</small><div class="bars">
+              <i style="--h:38%;--i:0"></i><i style="--h:52%;--i:1"></i><i style="--h:44%;--i:2"></i><i style="--h:63%;--i:3"></i><i style="--h:58%;--i:4"></i><i style="--h:74%;--i:5"></i><i style="--h:69%;--i:6"></i><i style="--h:86%;--i:7"></i><i style="--h:80%;--i:8"></i><i style="--h:95%;--i:9"></i>
+            </div></div>
+          </div>
+        </div>
+        <div class="float f1"><span class="ic" style="background:#163e2c;color:#2fd88a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg></span><div><b>Pix recebido</b><small>Mensalidade de outubro · 3º ano</small></div></div>
+        <div class="float f2"><span class="ic" style="background:#3d2a10;color:#ffc65c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 8v5M12 17h.01M10.3 3.9L2 18a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg></span><div><b>Frequência em alerta</b><small>Pedro · 74% · família avisada</small></div></div>
+        <div class="float f3"><span class="ic" style="background:#0e3550;color:#1ad1ff"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 19V5M4 19h16M8 15l4-4 3 3 5-6"/></svg></span><div><b>Boletim publicado</b><small>2º bimestre · 18 turmas</small></div></div>
+        <div class="maxorb"><img src="site-assets/max.png" alt=""></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="ribbon"><div class="track" id="track1"></div></div>
+<div class="ribbon alt" aria-hidden="true"><div class="track" id="track2"></div></div>
+
+<!-- ================= CAOS → ORDEM ================= -->
+<section class="chaos" id="produto">
+  <div class="chaos-sticky wrap">
+    <div class="chaos-copy">
+      <span class="kicker">O problema</span>
+      <h2 class="words" data-split>Planilha aqui. Caderno ali. Grupo de WhatsApp em todo lugar.</h2>
+      <p class="sub">Sua escola provavelmente funciona assim: cada informação num canto, e alguém da equipe gastando horas para juntar tudo. Role a página e veja o que acontece quando tudo vai para o mesmo lugar.</p>
+      <div class="chaos-state"><span class="pill" id="chaosPill">Informação espalhada</span></div>
+    </div>
+    <div class="board" id="board">
+      <div class="mold"><header><img src="site-assets/marca-128.png" alt="">MasterSchool<span>tudo conectado</span></header></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PERFIS ================= -->
+<section class="light pad" id="perfis">
+  <div class="wrap">
+    <span class="kicker rv">Para quem</span>
+    <h2 class="words" data-split>Cada pessoa da escola <em>ganha tempo</em>. Do jeito dela.</h2>
+    <p class="sub rv">Uma plataforma, cinco pontos de vista. Cada um vê exatamente o que precisa, com permissões por perfil.</p>
+
+    <div class="roles">
+      <div class="role-tabs" role="tablist" id="roleTabs">
+        <button class="role-tab" role="tab" aria-selected="true" data-r="0"><b><span class="em">🎯</span>Direção</b><small>Visão da escola inteira em uma tela.</small><span class="tm"></span></button>
+        <button class="role-tab" role="tab" aria-selected="false" data-r="1"><b><span class="em">🗂️</span>Secretaria</b><small>Cadastros e documentos sem fila.</small><span class="tm"></span></button>
+        <button class="role-tab" role="tab" aria-selected="false" data-r="2"><b><span class="em">📚</span>Professores</b><small>Chamada e notas em minutos.</small><span class="tm"></span></button>
+        <button class="role-tab" role="tab" aria-selected="false" data-r="3"><b><span class="em">💳</span>Financeiro</b><small>Cobrança que se resolve sozinha.</small><span class="tm"></span></button>
+        <button class="role-tab" role="tab" aria-selected="false" data-r="4"><b><span class="em">👨‍👩‍👧</span>Famílias</b><small>Tudo do filho, no dia em que acontece.</small><span class="tm"></span></button>
+      </div>
+
+      <div id="rolePanels">
+        <div class="role-panel on" role="tabpanel">
+          <div>
+            <h3>Você decide com dados, não com achismo.</h3>
+            <ul>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Painel com frequência, notas, recebimentos e comunicação, com detalhe por turma e por aluno.</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>O Max prepara um resumo do que pede atenção: turmas com falta, alunos em queda, cobranças atrasadas.</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Registro de tudo o que acontece no sistema, para saber quem fez o quê.</span></li>
+            </ul>
+          </div>
+          <div class="mock">
+            <h4>Painel da Direção <span class="tag">ao vivo</span></h4>
+            <div class="big-kpis"><div><small>Frequência média</small><b><span data-count="93">0</span>%<sup>▲2</sup></b></div><div><small>Mensalidades em dia</small><b><span data-count="96">0</span>%<sup>▲4</sup></b></div></div>
+            <div class="spark"><i style="--h:40%;--i:0"></i><i style="--h:55%;--i:1"></i><i style="--h:48%;--i:2"></i><i style="--h:66%;--i:3"></i><i style="--h:60%;--i:4"></i><i style="--h:72%;--i:5"></i><i style="--h:70%;--i:6"></i><i style="--h:84%;--i:7"></i><i style="--h:79%;--i:8"></i><i style="--h:90%;--i:9"></i><i style="--h:88%;--i:10"></i><i style="--h:97%;--i:11"></i></div>
+            <div class="mrow" style="--i:3;margin-top:12px"><span class="av" style="background:#ff6b5b">7B</span>7º ano B · frequência<span class="st bad">71%</span></div>
+            <div class="mrow" style="--i:4"><span class="av" style="background:#ffb020">9A</span>9º ano A · média em Matemática<span class="st warn">5,8</span></div>
+          </div>
+        </div>
+
+        <div class="role-panel" role="tabpanel">
+          <div>
+            <h3>Declaração pronta em um clique. Sem fila no balcão.</h3>
+            <ul>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Alunos, responsáveis, professores, turmas e disciplinas organizados num lugar só.</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Declarações, atestados, ata de resultados e carteirinha gerados com os dados e o logo da escola.</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Virada de ano assistida: promoção de alunos e turmas novas sem refazer cadastro.</span></li>
+            </ul>
+          </div>
+          <div class="mock">
+            <h4>Documentos da secretaria <span class="tag">PDF na hora</span></h4>
+            <div class="docgen">
+              <div class="doc" style="--i:0"><i></i><i></i><i></i><i></i><span>Declaração de matrícula</span></div>
+              <div class="doc" style="--i:1"><i></i><i></i><i></i><span>Declaração de frequência</span></div>
+              <div class="doc" style="--i:2"><i></i><i></i><i></i><i></i><span>Atestado de vaga</span></div>
+              <div class="doc" style="--i:3"><i></i><i></i><i></i><span>Ata de resultados</span></div>
+              <div class="doc" style="--i:4"><i></i><i></i><i></i><i></i><span>Carteirinha do aluno</span></div>
+              <div class="doc" style="--i:5"><i></i><i></i><i></i><span>Histórico do aluno</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="role-panel" role="tabpanel">
+          <div>
+            <h3>Chamada em segundos. Nota lançada uma vez só.</h3>
+            <ul>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Diário de classe com chamada, conteúdo da aula e notas, do computador ou do celular.</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Planejamento com as habilidades da BNCC já cadastradas.</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>A nota lançada já aparece no boletim e para a família. Ninguém digita de novo.</span></li>
+            </ul>
+          </div>
+          <div class="mock">
+            <h4>Chamada · 6º ano A <span class="tag">Matemática · 1ª aula</span></h4>
+            <div class="mrow" style="--i:0"><span class="av" style="background:#1767c9">AB</span>Ana Beatriz<span class="toggle on"></span></div>
+            <div class="mrow" style="--i:1"><span class="av" style="background:#0aa6d6">BL</span>Bruno Lima<span class="toggle on"></span></div>
+            <div class="mrow" style="--i:2"><span class="av" style="background:#7a5cff">CS</span>Carla Souza<span class="toggle off"></span></div>
+            <div class="mrow" style="--i:3"><span class="av" style="background:#2fd88a">DM</span>Davi Martins<span class="toggle on"></span></div>
+            <div class="mrow" style="--i:4"><span class="av" style="background:#ff6b5b">EF</span>Eduarda Faria<span class="toggle on"></span></div>
+            <div class="mrow" style="--i:5"><span class="av" style="background:#ffb020">FR</span>Felipe Rocha<span class="toggle on"></span></div>
+          </div>
+        </div>
+
+        <div class="role-panel" role="tabpanel">
+          <div>
+            <h3>Menos cobrança no telefone. Mais dinheiro no caixa.</h3>
+            <ul>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Contratos e mensalidades gerados por aluno, com desconto e vencimento configuráveis.</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Boleto e Pix emitidos e conciliados automaticamente: quando o pai paga, a baixa acontece sozinha.</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Lembrete de vencimento para a família e recibo disponível na hora.</span></li>
+            </ul>
+          </div>
+          <div class="mock">
+            <h4>Cobranças de outubro <span class="tag">conciliação automática</span></h4>
+            <div class="mrow" style="--i:0"><span class="av" style="background:#1767c9">P</span>Família Pereira · R$ 890,00<span class="st ok">Pago via Pix</span></div>
+            <div class="mrow" style="--i:1"><span class="av" style="background:#0aa6d6">C</span>Família Costa · R$ 890,00<span class="st ok">Pago</span></div>
+            <div class="mrow" style="--i:2"><span class="av" style="background:#7a5cff">A</span>Família Alves · R$ 745,00<span class="st info">Vence em 3 dias</span></div>
+            <div class="mrow" style="--i:3"><span class="av" style="background:#ffb020">M</span>Família Moura · R$ 890,00<span class="st warn">Lembrete enviado</span></div>
+            <div class="mrow" style="--i:4"><span class="av" style="background:#2fd88a">S</span>Família Silva · R$ 890,00<span class="st ok">Pago via boleto</span></div>
+          </div>
+        </div>
+
+        <div class="role-panel" role="tabpanel">
+          <div>
+            <h3>O pai fica sabendo hoje. Não no fim do bimestre.</h3>
+            <ul>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Notas, faltas, comunicados, ocorrências e mensalidades do filho no celular.</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Avisos no WhatsApp quando algo importante acontece.</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg><span>Confirmação de leitura: a escola sabe quem viu o comunicado.</span></li>
+            </ul>
+          </div>
+          <div class="mock" style="background:linear-gradient(160deg,#eef6ff,#fff)">
+            <div class="phone"><div class="phone-in">
+              <div class="notif" style="--i:0"><span class="ic" style="background:#e6f6ff">📊</span><div><b>Nota lançada</b>Matemática 9,5 · prova do 2º bimestre</div></div>
+              <div class="notif" style="--i:1"><span class="ic" style="background:#fff1d6">⚠️</span><div><b>Frequência</b>Pedro está com 74%. O mínimo é 75%.</div></div>
+              <div class="notif" style="--i:2"><span class="ic" style="background:#e9e4ff">📣</span><div><b>Comunicado</b>Reunião de pais na quinta, 19h.</div></div>
+              <div class="notif" style="--i:3"><span class="ic" style="background:#d9f9e8">💳</span><div><b>Mensalidade</b>Vence em 3 dias. Pagar com Pix.</div></div>
+              <div class="notif" style="--i:4"><span class="ic" style="background:#ffe9f3">⭐</span><div><b>Elogio</b>Ana ajudou os colegas no trabalho em grupo.</div></div>
+            </div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MAX ================= -->
+<section class="dark pad max-sec" id="max">
+  <div class="wrap max-grid">
+    <div class="rv">
+      <div class="owl"><span class="ring"></span><span class="ring"></span><span class="orb"></span><img src="site-assets/max.png" alt="Max, a coruja assistente do MasterSchool"></div>
+    </div>
+    <div>
+      <span class="kicker rv">Max · assistente de IA</span>
+      <h2 class="words" data-split>Pergunte qualquer coisa sobre a sua escola. <em>Em português.</em></h2>
+      <p class="sub rv">O Max lê os dados da sua escola e responde na hora. Sem filtro, sem relatório, sem esperar alguém da equipe montar a planilha. Cada pessoa só vê o que o perfil dela permite.</p>
+      <div class="max-caps rv"><span>Resumo do dia para a direção</span><span>Alunos que precisam de atenção</span><span>Notas e frequência por turma</span><span>Atalhos para cada tela</span></div>
+
+      <div class="chat rv">
+        <div class="chat-head"><img src="site-assets/max.png" alt=""><div><b>Max</b><small>● online</small></div></div>
+        <div class="chat-log" id="chatLog" aria-live="polite"></div>
+        <div class="chat-q" id="chatQ">
+          <button data-q="0" aria-pressed="false">O que pede atenção hoje?</button>
+          <button data-q="1" aria-pressed="false">Quais alunos estão com muitas faltas?</button>
+          <button data-q="2" aria-pressed="false">Como está o financeiro do mês?</button>
+        </div>
+        <p class="chat-note">Demonstração com dados fictícios. Clique numa pergunta.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= BENTO ================= -->
+<section class="light pad">
+  <div class="wrap">
+    <div class="center">
+      <span class="kicker rv">Tudo incluído</span>
+      <h2 class="words" data-split>O que a sua escola <em>ganha</em> no primeiro dia.</h2>
+    </div>
+    <div class="bento">
+      <article class="tile t-wide t-dark rv">
+        <div class="ico" style="background:rgba(37,211,102,.15);color:#25d366"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 00-8.6 15.1L2 22l5-1.3A10 10 0 1012 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1112 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 01-3.3-2.9c-.3-.4.3-.4.7-1.4a.5.5 0 000-.4l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 00-.7.3 3 3 0 00-.9 2.2 5.2 5.2 0 001.1 2.7 11.8 11.8 0 004.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 001.8-1.2 2.2 2.2 0 00.1-1.2c0-.1-.2-.2-.5-.3z"/></svg></div>
+        <h3>Avisos no WhatsApp, automáticos</h3>
+        <p>Falta, nota baixa, comunicado novo, mensalidade vencendo: a família recebe no WhatsApp, pela API oficial. Ninguém da equipe precisa digitar.</p>
+        <div class="wa-demo">
+          <div class="wa" style="--i:0">📊 Nota lançada: Ciências 8,7<small>07:42 ✓✓</small></div>
+          <div class="wa" style="--i:1">📣 Novo comunicado: Feira de Ciências<small>10:15 ✓✓</small></div>
+          <div class="wa" style="--i:2">💳 Mensalidade vence amanhã. Pix disponível.<small>18:03 ✓✓</small></div>
+        </div>
+      </article>
+      <article class="tile t-sm t-cyan rv" style="--dl:.08s">
+        <div class="pix" id="pix"></div>
+        <div class="ico" style="background:rgba(255,255,255,.18);color:#fff"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg></div>
+        <h3>Pix e boleto</h3>
+        <p>Emitidos e baixados sozinhos.</p>
+      </article>
+      <article class="tile t-sm rv">
+        <div class="ico" style="background:#e6f6ff;color:#0a7fb0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></div>
+        <h3>Documentos oficiais</h3>
+        <p>Declarações, atestados, ata e carteirinha com o logo da escola.</p>
+      </article>
+      <article class="tile t-sm rv" style="--dl:.08s">
+        <div class="ico" style="background:#efe9ff;color:#6a4cf0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20V3H6.5A2.5 2.5 0 004 5.5z"/><path d="M8 7h8M8 11h6"/></svg></div>
+        <h3>Planejamento com BNCC</h3>
+        <p>Habilidades da BNCC prontas para o professor usar.</p>
+      </article>
+      <article class="tile t-sm t-lime rv" style="--dl:.16s">
+        <div class="ico" style="background:rgba(11,26,51,.1);color:#0b1a33"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg></div>
+        <h3>Na palma da mão</h3>
+        <p>Funciona no navegador do computador, tablet ou celular. Nada para instalar.</p>
+      </article>
+      <article class="tile t-mid rv">
+        <div class="ico" style="background:#fff1d6;color:#a86a00"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div>
+        <h3>Comunicação que deixa rastro</h3>
+        <p>Mural, recados, ocorrências e elogios num só lugar, com confirmação de leitura. Chega de "eu não recebi".</p>
+      </article>
+      <article class="tile t-mid t-dark rv" style="--dl:.08s">
+        <div class="ico" style="background:rgba(26,209,255,.14);color:#1ad1ff"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <h3>Seus dados, só seus</h3>
+        <p>Cada escola tem o próprio banco de dados, perfis com permissões por área e registro de quem acessou o quê. Feito pensando na LGPD.</p>
+        <span class="lock">LGPD</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= UM DIA ================= -->
+<section class="dark pad" id="dia">
+  <div class="wrap">
+    <div class="center">
+      <span class="kicker rv">Um dia com MasterSchool</span>
+      <h2 class="words" data-split>Enquanto a escola funciona, <em>o sistema trabalha junto.</em></h2>
+    </div>
+    <div class="day" id="day">
+      <div class="day-line"><i></i></div>
+      <div class="ev rv"><time>07:10</time><h3>Chamada feita no celular</h3><p>O professor marca as presenças antes do primeiro sinal. A falta já entra no sistema.</p><span class="who">Professor</span></div>
+      <div class="ev rv"><time>07:30</time><h3>A família é avisada</h3><p>O responsável do aluno que faltou recebe o aviso no WhatsApp. Sem telefonema.</p><span class="who">Automático</span></div>
+      <div class="ev rv"><time>09:00</time><h3>A direção abre o resumo do Max</h3><p>Três turmas com frequência caindo e duas cobranças atrasadas. Dá para agir antes de virar problema.</p><span class="who">Direção</span></div>
+      <div class="ev rv"><time>11:20</time><h3>Declaração sem fila</h3><p>Uma mãe pede declaração de matrícula. A secretaria gera o PDF em segundos, com o logo da escola.</p><span class="who">Secretaria</span></div>
+      <div class="ev rv"><time>14:45</time><h3>Pix caiu, baixa feita</h3><p>A mensalidade é paga e a baixa acontece sozinha. O recibo fica disponível para a família.</p><span class="who">Financeiro</span></div>
+      <div class="ev rv"><time>19:30</time><h3>Nota no boletim, pai tranquilo</h3><p>A nota da prova é lançada uma vez. Aparece no boletim e no celular do responsável.</p><span class="who">Família</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= COMO FUNCIONA ================= -->
+<section class="light pad" id="como">
+  <div class="wrap">
+    <span class="kicker rv">Como funciona</span>
+    <h2 class="words" data-split>Você não troca de sistema sozinho. <em>A gente faz junto.</em></h2>
+    <div class="steps">
+      <div class="step rv"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div><h3>Conversa e demonstração</h3><p>Entendemos como a sua escola funciona hoje e mostramos o sistema com os seus casos reais. Sem compromisso.</p></div>
+      <div class="step rv" style="--dl:.1s"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></div><h3>Implantação</h3><p>Levamos alunos, turmas e responsáveis para o sistema, configuramos o ano letivo, as avaliações e o financeiro do seu jeito.</p></div>
+      <div class="step rv" style="--dl:.2s"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg></div><h3>Treinamento e suporte</h3><p>Treinamos a equipe e seguimos por perto. Dúvida se resolve no WhatsApp, com quem conhece o sistema por dentro.</p></div>
+    </div>
+    <div class="promise rv">
+      <div class="owl" style="width:64px;margin:0"><img src="site-assets/max.png" alt="" style="animation:none"></div>
+      <p><strong>O sistema evolui com a sua escola.</strong>A plataforma é desenvolvida aqui, em contato direto com as escolas que usam. Sugestões viram melhorias de verdade.</p>
+      <a class="btn mag" href="#contato">Quero conversar</a>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CONTATO ================= -->
+<section class="cta-sec dark pad" id="contato">
+  <div class="wrap cta-grid">
+    <div>
+      <span class="kicker rv">Agende uma demonstração</span>
+      <h2 class="words" data-split>Vamos ver a sua escola <em>funcionando</em> no MasterSchool?</h2>
+      <p class="sub rv">Leva menos de um minuto. A gente chama você no WhatsApp para marcar o melhor horário.</p>
+      <ul class="perks rv">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg>Demonstração ao vivo, com os casos da sua escola</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg>Proposta de acordo com o tamanho da escola e os módulos que fazem sentido</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg>Sem compromisso e sem ligação de telemarketing</li>
+      </ul>
+      <div class="contact-alt rv">
+        <span>Prefere falar agora?</span>
+        <a href="https://wa.me/5522996031169?text=Ol%C3%A1!%20Quero%20conhecer%20o%20MasterSchool%20para%20a%20minha%20escola." target="_blank" rel="noopener">WhatsApp (22) 99603-1169</a>
+        <a href="mailto:jr.andersonfs@gmail.com">jr.andersonfs@gmail.com</a>
+      </div>
+    </div>
+
+    <div class="form-card rv" id="formCard">
+      <form id="leadForm" novalidate>
+        <div class="steps-bar" aria-hidden="true"><i class="done"></i><i></i><i></i></div>
+
+        <div class="fstep on" data-step="0">
+          <h3>Primeiro, quem é você?</h3>
+          <p>Para a gente saber com quem vai conversar.</p>
+          <div class="fgrid">
+            <div class="field full"><label for="nome">Seu nome</label><input id="nome" name="nome" autocomplete="name" maxlength="120" required><span class="err">Escreva seu nome.</span></div>
+            <div class="field full"><span class="legend">Qual o seu papel na escola?</span>
+              <div class="choice" id="cargoChoice">
+                <label><input type="radio" name="cargo" value="Mantenedor(a) / Dono(a)"><span>Dono(a) / Mantenedor(a)</span></label>
+                <label><input type="radio" name="cargo" value="Direção"><span>Direção</span></label>
+                <label><input type="radio" name="cargo" value="Coordenação"><span>Coordenação</span></label>
+                <label><input type="radio" name="cargo" value="Secretaria"><span>Secretaria</span></label>
+                <label><input type="radio" name="cargo" value="Financeiro"><span>Financeiro</span></label>
+                <label><input type="radio" name="cargo" value="Professor(a)"><span>Professor(a)</span></label>
+                <label><input type="radio" name="cargo" value="Outro"><span>Outro</span></label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fstep" data-step="1">
+          <h3>Agora, sobre a escola.</h3>
+          <p>Assim a demonstração já vem com a cara dela.</p>
+          <div class="fgrid">
+            <div class="field full"><label for="escola">Nome da escola</label><input id="escola" name="escola" maxlength="150" required><span class="err">Escreva o nome da escola.</span></div>
+            <div class="field"><label for="cidade">Cidade</label><input id="cidade" name="cidade" autocomplete="address-level2" maxlength="80" required><span class="err">Informe a cidade.</span></div>
+            <div class="field"><label for="alunos">Quantos alunos? <span class="opt">(aprox.)</span></label>
+              <select id="alunos" name="alunos"><option value="">Escolha</option><option>até 150</option><option>151 a 400</option><option>401 a 1000</option><option>mais de 1000</option></select></div>
+            <div class="field full"><span class="legend">O que mais interessa? <span class="opt">(opcional)</span></span>
+              <div class="choice">
+                <label><input type="checkbox" name="interesses" value="Gestão acadêmica"><span>Gestão acadêmica</span></label>
+                <label><input type="checkbox" name="interesses" value="Diário e planejamento"><span>Diário e planejamento</span></label>
+                <label><input type="checkbox" name="interesses" value="Comunicação com as famílias"><span>Comunicação com as famílias</span></label>
+                <label><input type="checkbox" name="interesses" value="Financeiro e cobrança"><span>Financeiro e cobrança</span></label>
+                <label><input type="checkbox" name="interesses" value="Documentos da secretaria"><span>Documentos</span></label>
+                <label><input type="checkbox" name="interesses" value="Assistente Max (IA)"><span>Assistente Max</span></label>
+                <label><input type="checkbox" name="interesses" value="Avisos no WhatsApp"><span>Avisos no WhatsApp</span></label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fstep" data-step="2">
+          <h3>Por onde a gente fala com você?</h3>
+          <p>Respondemos pelo WhatsApp, em horário comercial.</p>
+          <div class="fgrid">
+            <div class="field"><label for="whatsapp">WhatsApp</label><input id="whatsapp" name="whatsapp" type="tel" inputmode="tel" autocomplete="tel" placeholder="(22) 99999-9999" required><span class="err">Informe um WhatsApp com DDD.</span></div>
+            <div class="field"><label for="email">E-mail <span class="opt">(opcional)</span></label><input id="email" name="email" type="email" autocomplete="email" maxlength="150"><span class="err">Confira o e-mail.</span></div>
+            <div class="field full"><label for="mensagem">Quer contar algo? <span class="opt">(opcional)</span></label><textarea id="mensagem" name="mensagem" maxlength="1500" placeholder="Ex.: hoje usamos planilhas e o financeiro é o que mais dá trabalho."></textarea></div>
+          </div>
+          <label class="consent" id="lgpdWrap"><input type="checkbox" id="lgpd"><span>Concordo que o MasterSchool use estes dados para entrar em contato sobre a demonstração. Posso pedir a exclusão a qualquer momento.</span></label>
+          <input type="text" name="website" tabindex="-1" autocomplete="off" class="sr" aria-hidden="true">
+        </div>
+
+        <div class="factions">
+          <button type="button" class="back" id="backBtn" hidden>← Voltar</button>
+          <button type="submit" class="btn btn-dark" id="nextBtn" style="margin-left:auto">Continuar <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+        </div>
+        <p class="fstatus" id="fstatus" role="alert"></p>
+      </form>
+
+      <div class="done-box" id="doneBox" hidden tabindex="-1">
+        <div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg></div>
+        <h3 id="doneTitle">Recebemos!</h3>
+        <p id="doneText">Em breve a gente chama você no WhatsApp para marcar a demonstração.</p>
+        <a class="btn" id="doneWa" target="_blank" rel="noopener" href="https://wa.me/5522996031169">Adiantar pelo WhatsApp</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FAQ ================= -->
+<section class="light pad" id="faq">
+  <div class="wrap">
+    <div class="center">
+      <span class="kicker rv">Dúvidas</span>
+      <h2 class="words" data-split>Perguntas que toda escola faz.</h2>
+    </div>
+    <div class="faq">
+      <details class="rv"><summary>Quanto custa?</summary><p>Depende do número de alunos e dos módulos que fazem sentido para a sua escola. Na demonstração você recebe uma proposta clara, sem letra miúda. Para as famílias, o acesso é gratuito.</p></details>
+      <details class="rv"><summary>Preciso instalar alguma coisa?</summary><p>Não. O MasterSchool funciona no navegador do computador, do tablet e do celular. Direção, equipe, professores e famílias acessam com o próprio login.</p></details>
+      <details class="rv"><summary>Já temos tudo em planilhas. Dá para aproveitar?</summary><p>Dá. Na implantação, a gente leva para o sistema os alunos, turmas e responsáveis que vocês já têm, e configura o ano letivo junto com a equipe.</p></details>
+      <details class="rv"><summary>O Max (a inteligência artificial) vê dados que não deveria?</summary><p>Não. O Max respeita o perfil de quem pergunta: um professor só recebe respostas sobre as turmas dele, uma família só sobre os próprios filhos.</p></details>
+      <details class="rv"><summary>E a segurança dos dados?</summary><p>Cada escola tem o próprio banco de dados, separado das outras. Os acessos são por perfil com permissões por área, e o sistema registra quem fez o quê. Tudo pensado para atender à LGPD.</p></details>
+      <details class="rv"><summary>A escola pode usar só uma parte, como o financeiro?</summary><p>Pode. Os módulos conversam entre si, mas a escola pode começar pelo que mais dói hoje e ir ativando o resto no seu tempo.</p></details>
+      <details class="rv"><summary>Como funciona o suporte?</summary><p>Direto pelo WhatsApp, com quem desenvolve e conhece o sistema por dentro. Nada de robô de atendimento empurrando você de um setor para outro.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FINAL ================= -->
+<section class="dark final">
+  <div class="wrap">
+    <h2 class="words" data-split>Sua escola merece <em>menos papel</em> e mais escola.</h2>
+    <div class="hero-ctas rv">
+      <a class="btn mag" href="#contato">Agendar demonstração <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a class="btn btn-ghost mag" href="https://wa.me/5522996031169?text=Ol%C3%A1!%20Quero%20conhecer%20o%20MasterSchool." target="_blank" rel="noopener">Chamar no WhatsApp</a>
+    </div>
+  </div>
+  <div class="giant" aria-hidden="true">MasterSchool</div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#topo"><img src="site-assets/marca-128.png" alt=""><span>Master<b>School</b></span></a>
+    <span>© <span id="ano"></span> MasterSchool · Gestão escolar com inteligência artificial</span>
+    <a class="pais-link sp" href="https://pais.portalmasterschool.com.br/">É pai ou mãe? Peça na escola do seu filho →</a>
+  </div>
+</footer>
+
+<a class="wa-float" href="https://wa.me/5522996031169?text=Ol%C3%A1!%20Quero%20conhecer%20o%20MasterSchool." target="_blank" rel="noopener" aria-label="Falar no WhatsApp"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 00-8.6 15.1L2 22l5-1.3A10 10 0 1012 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1112 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 01-3.3-2.9c-.3-.4.3-.4.7-1.4a.5.5 0 000-.4l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 00-.7.3 3 3 0 00-.9 2.2 5.2 5.2 0 001.1 2.7 11.8 11.8 0 004.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 001.8-1.2 2.2 2.2 0 00.1-1.2c0-.1-.2-.2-.5-.3z"/></svg></a>
+
+<script>
+/* =====================================================================
+   CONFIGURAÇÃO
+   ===================================================================== */
+const CONFIG = {
+  // Laravel (banco comercial). O site fica em outro host: chega por CORS.
+  endpoint: "https://pais.portalmasterschool.com.br/api/contato-escola",
+  whatsapp: "5522996031169"
+};
+/* ===================================================================== */
+
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const params = new URLSearchParams(location.search);
+$("#ano").textContent = new Date().getFullYear();
+
+/* ---------- Topo, progresso e brilho do cursor ---------- */
+const nav = $("#nav"), prog = $("#progress"), glow = $("#glow");
+function onScroll(){
+  nav.classList.toggle("scrolled", scrollY > 10);
+  const h = document.documentElement.scrollHeight - innerHeight;
+  prog.style.setProperty("--p", h > 0 ? scrollY / h : 0);
+  chaosTick(); dayTick();
+}
+addEventListener("scroll", onScroll, { passive: true });
+addEventListener("resize", onScroll);
+if (!reduce) addEventListener("pointermove", e => { glow.style.setProperty("--mx", e.clientX + "px"); glow.style.setProperty("--my", e.clientY + "px"); }, { passive: true });
+
+$("#menuBtn").addEventListener("click", () => {
+  const open = nav.classList.toggle("open");
+  $("#menuBtn").setAttribute("aria-expanded", open);
+});
+$$("#navLinks a").forEach(a => a.addEventListener("click", () => { nav.classList.remove("open"); $("#menuBtn").setAttribute("aria-expanded", false); }));
+
+/* ---------- Títulos palavra por palavra + revelação ao rolar ---------- */
+$$("[data-split]").forEach(el => {
+  let k = 0;
+  // Cada palavra vira <span.w><i>palavra</i></span>; palavras de um <em> levam o próprio <em>
+  // (o gradiente com background-clip:text precisa estar no elemento que tem o texto).
+  const walk = (node, emOrig) => {
+    [...node.childNodes].forEach(n => {
+      if (n.nodeType === 3) {
+        const frag = document.createDocumentFragment();
+        n.textContent.split(/(\s+)/).forEach(part => {
+          if (!part) return;
+          if (/^\s+$/.test(part)) { frag.append(" "); return; }
+          const w = document.createElement("span"); w.className = "w";
+          const i = document.createElement("i"); i.style.setProperty("--k", k++);
+          if (emOrig) { const em = emOrig.cloneNode(false); em.textContent = part; i.append(em); } else i.textContent = part;
+          w.append(i); frag.append(w);
+        });
+        n.replaceWith(frag);
+      } else if (n.nodeType === 1 && n.tagName === "EM") { walk(n, n); n.replaceWith(...n.childNodes); }
+      // A palavra que troca (#rot) fica como texto normal: muda de tamanho e precisa quebrar linha.
+      else if (n.nodeType === 1 && n.id !== "rot") walk(n, emOrig);
+    });
+  };
+  walk(el);
+});
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  e.target.classList.add("in");
+  if (e.target.dataset.countWatch !== undefined) countUp(e.target);
+  io.unobserve(e.target);
+}), { threshold: .15, rootMargin: "0px 0px -6% 0px" });
+$$(".rv,[data-split]").forEach(el => io.observe(el));
+
+/* ---------- Palavra que troca no título ---------- */
+const rot = $("#rot");
+const palavras = ["planilha", "papel", "grupo de WhatsApp", "boleto avulso", "caderno de chamada"];
+let pi = 0;
+async function digita(){
+  if (reduce) return;
+  await sleep(2600);
+  for (;;) {
+    const atual = palavras[pi % palavras.length];
+    for (let i = atual.length; i >= 0; i--) { rot.textContent = atual.slice(0, i) || "​"; await sleep(38); }
+    pi++;
+    const prox = palavras[pi % palavras.length];
+    for (let i = 1; i <= prox.length; i++) { rot.textContent = prox.slice(0, i); await sleep(70); }
+    await sleep(2200);
+  }
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Fonte da linha da palavra: a mais longa da lista cabe na largura do título (sem quebrar).
+function ajustaRot(){
+  const h1 = rot.closest("h1"), medida = rot.cloneNode(false);
+  medida.removeAttribute("id");
+  medida.style.cssText = "position:absolute;visibility:hidden;font-size:1em";
+  h1.append(medida);
+  let maior = 0;
+  for (const p of palavras) { medida.textContent = p; maior = Math.max(maior, medida.getBoundingClientRect().width); }
+  medida.remove();
+  const escala = Math.min(1, (h1.clientWidth - 4) / maior);
+  rot.style.setProperty("--rot-fs", escala.toFixed(3) + "em");
+}
+ajustaRot();
+addEventListener("resize", ajustaRot);
+document.fonts?.ready.then(ajustaRot);
+digita();
+
+/* ---------- Palco 3D segue o mouse ---------- */
+const stage = $("#stage"), inner = $("#stageInner");
+if (!reduce && matchMedia("(hover:hover)").matches) {
+  document.querySelector(".hero").addEventListener("pointermove", e => {
+    const r = stage.getBoundingClientRect();
+    const x = (e.clientX - (r.left + r.width / 2)) / r.width, y = (e.clientY - (r.top + r.height / 2)) / r.height;
+    inner.style.setProperty("--rx", (x * 14).toFixed(2) + "deg");
+    inner.style.setProperty("--ry", (-y * 10).toFixed(2) + "deg");
+  });
+  document.querySelector(".hero").addEventListener("pointerleave", () => { inner.style.setProperty("--rx", "0deg"); inner.style.setProperty("--ry", "0deg"); });
+}
+
+/* ---------- Contadores ---------- */
+function countUp(root){
+  $$("[data-count]", root).forEach(el => {
+    const alvo = +el.dataset.count, suf = el.dataset.suffix || "", t0 = performance.now(), dur = reduce ? 1 : 1400;
+    const passo = t => { const p = Math.min(1, (t - t0) / dur), v = Math.round(alvo * (1 - Math.pow(1 - p, 3))); el.textContent = v + suf; if (p < 1) requestAnimationFrame(passo); };
+    requestAnimationFrame(passo);
+  });
+}
+stage.dataset.countWatch = ""; io.observe(stage);
+
+/* ---------- Rede neural no fundo do hero ---------- */
+(function neural(){
+  const c = $("#neural"), x = c.getContext("2d");
+  let W, H, pts = [], visivel = true, dpr = Math.min(devicePixelRatio || 1, 2);
+  function size(){
+    W = c.offsetWidth; H = c.offsetHeight; c.width = W * dpr; c.height = H * dpr; x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const n = Math.round(Math.min(90, W * H / 16000));
+    pts = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .3, vy: (Math.random() - .5) * .3, r: Math.random() * 1.6 + .6 }));
+  }
+  let mx = -999, my = -999;
+  c.parentElement.addEventListener("pointermove", e => { const r = c.getBoundingClientRect(); mx = e.clientX - r.left; my = e.clientY - r.top; });
+  function frame(){
+    if (visivel) {
+      x.clearRect(0, 0, W, H);
+      for (const p of pts) {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > W) p.vx *= -1;
+        if (p.y < 0 || p.y > H) p.vy *= -1;
+      }
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i];
+        for (let j = i + 1; j < pts.length; j++) {
+          const b = pts[j], d = Math.hypot(a.x - b.x, a.y - b.y);
+          if (d < 130) { x.strokeStyle = `rgba(26,209,255,${(1 - d / 130) * .35})`; x.lineWidth = .7; x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke(); }
+        }
+        const dm = Math.hypot(a.x - mx, a.y - my);
+        if (dm < 180) { x.strokeStyle = `rgba(196,255,94,${(1 - dm / 180) * .5})`; x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(mx, my); x.stroke(); }
+        x.fillStyle = "rgba(170,235,255,.9)"; x.beginPath(); x.arc(a.x, a.y, a.r, 0, 7); x.fill();
+      }
+    }
+    if (!reduce) requestAnimationFrame(frame);
+  }
+  size(); addEventListener("resize", size);
+  new IntersectionObserver(([e]) => visivel = e.isIntersecting).observe(c);
+  frame();
+})();
+
+/* ---------- Faixas rolantes ---------- */
+const modulos = ["Diário de classe", "Boletim", "Frequência", "Planejamento com BNCC", "Mural", "Ocorrências", "Recados", "Pix e boleto", "Contratos", "Recibos", "Declarações", "Carteirinha", "Avisos no WhatsApp", "Assistente Max", "Painel da direção", "Perfis e permissões"];
+const fill = (el, arr) => { const html = arr.map(t => `<span>${t}</span>`).join(""); el.innerHTML = html + html; };
+fill($("#track1"), modulos);
+fill($("#track2"), ["Menos planilha", "Menos papel", "Menos telefonema", "Menos retrabalho", "Mais tempo para educar", "Família por perto", "Caixa em dia", "Decisão com dados"]);
+
+/* ---------- Do caos à ordem (rolagem controla --p) ---------- */
+const chaosSec = $(".chaos"), board = $("#board"), pill = $("#chaosPill");
+const itens = [
+  { ic: "📊", bg: "#e7f7ec", old: "notas_FINAL_v3.xlsx", oldS: "planilha no pen drive", neu: "Boletim", neuS: "publicado para as famílias" },
+  { ic: "📒", bg: "#fff4dc", old: "Caderno de chamada", oldS: "na gaveta da sala", neu: "Diário de classe", neuS: "chamada no celular" },
+  { ic: "💬", bg: "#e8f8ee", old: "Grupo \"Pais 6º ano\"", oldS: "312 mensagens não lidas", neu: "Comunicação", neuS: "com confirmação de leitura" },
+  { ic: "🧾", bg: "#ffe9e6", old: "Boleto avulso", oldS: "baixa feita à mão", neu: "Financeiro", neuS: "Pix e boleto conciliados" },
+  { ic: "📝", bg: "#eef0ff", old: "Declaração no Word", oldS: "copiar, colar, imprimir", neu: "Documentos", neuS: "PDF com um clique" },
+  { ic: "📞", bg: "#e6f6ff", old: "Ligar para os pais", oldS: "aviso de falta", neu: "WhatsApp automático", neuS: "a família já sabe" }
+];
+const chips = itens.map((it, i) => {
+  const d = document.createElement("div"); d.className = "chip-t";
+  d.innerHTML = `<span class="ic" style="background:${it.bg}">${it.ic}</span><div class="old"><b>${it.old}</b><small>${it.oldS}</small></div><div class="new"><b>${it.neu}</b><small>${it.neuS}</small></div>`;
+  board.append(d); return d;
+});
+function layoutChaos(){
+  // Desktop: termina em 2 colunas dentro do cartão. Celular: 1 coluna (não cabe lado a lado).
+  const w = board.offsetWidth, h = board.offsetHeight, mob = w < 520;
+  chips.forEach((d, i) => {
+    const ang = i / chips.length * Math.PI * 2 + .4;
+    d.style.setProperty("--sx", (Math.cos(ang) * w * (mob ? .22 : .36)).toFixed(0));
+    d.style.setProperty("--sy", (Math.sin(ang) * h * .36).toFixed(0));
+    d.style.setProperty("--sr", ((i % 2 ? 1 : -1) * (8 + i * 3)));
+    if (mob) {
+      d.style.width = Math.min(260, w - 60) + "px";
+      d.style.setProperty("--ex", 0);
+      d.style.setProperty("--ey", (i * 58 - 2.5 * 58 + 28).toFixed(0));
+    } else {
+      d.style.width = "";
+      const col = i % 2, row = Math.floor(i / 2);
+      d.style.setProperty("--ex", (col ? 112 : -112));
+      d.style.setProperty("--ey", (row * 76 - 76 + 28));
+    }
+  });
+}
+function chaosTick(){
+  const r = chaosSec.getBoundingClientRect(), total = chaosSec.offsetHeight - innerHeight;
+  let p = total > 0 ? (-r.top) / total : 0;
+  p = Math.min(1, Math.max(0, (p - .12) / .66));
+  if (reduce) p = r.top < innerHeight * .5 ? 1 : 0;
+  board.style.setProperty("--p", p.toFixed(3));
+  pill.textContent = p > .92 ? "Tudo num lugar só" : "Informação espalhada";
+  pill.classList.toggle("ok", p > .92);
+}
+layoutChaos(); addEventListener("resize", layoutChaos);
+
+/* ---------- Perfis (troca automática até o usuário clicar) ---------- */
+const tabs = $$(".role-tab"), panels = $$(".role-panel");
+let roleIdx = 0, roleTimer = null, auto = !reduce;
+function showRole(i){
+  roleIdx = i;
+  tabs.forEach((t, k) => { t.setAttribute("aria-selected", k === i); const tm = $(".tm", t); tm.classList.remove("run"); void tm.offsetWidth; if (k === i && auto) tm.classList.add("run"); });
+  panels.forEach((p, k) => { p.classList.toggle("on", k === i); if (k === i) { p.querySelectorAll("[style*='--i']").forEach(el => { el.style.animation = "none"; void el.offsetWidth; el.style.animation = ""; }); countUp(p); } });
+  clearTimeout(roleTimer);
+  if (auto) roleTimer = setTimeout(() => showRole((roleIdx + 1) % tabs.length), 7000);
+}
+tabs.forEach((t, i) => t.addEventListener("click", () => { auto = false; showRole(i); }));
+new IntersectionObserver(([e]) => {
+  if (e.isIntersecting && auto && !roleTimer) showRole(roleIdx);
+  else if (!e.isIntersecting) { clearTimeout(roleTimer); roleTimer = null; }
+}, { threshold: .3 }).observe($("#perfis"));
+
+/* ---------- Max: conversa de demonstração ---------- */
+const RESP = [
+  { q: "O que pede atenção hoje?", a: "Bom dia! Três pontos para hoje:<br>• <b>7º ano B</b> está com 71% de frequência na semana.<br>• <b>4 alunos</b> do 9º ano tiveram queda de nota em Matemática.<br>• <b>6 mensalidades</b> vencem amanhã. O lembrete já foi enviado às famílias.<br>Quer que eu abra a lista do 7º B?" },
+  { q: "Quais alunos estão com muitas faltas?", a: "Abaixo do mínimo de 75% hoje:<br>• <b>Pedro Alves</b> (6º A): 72%, 5 faltas no mês<br>• <b>Lara Mendes</b> (7º B): 70%<br>• <b>Caio Rocha</b> (8º A): 74%<br>As famílias de Pedro e Caio já receberam aviso. Posso preparar um comunicado para a família da Lara?" },
+  { q: "Como está o financeiro do mês?", a: "Outubro até agora:<br>• <b>91%</b> das mensalidades recebidas, a maior parte via Pix.<br>• <b>R$ 4.450</b> ainda em aberto, em 5 famílias.<br>• Nenhuma cobrança vencida há mais de 30 dias.<br>Quer ver as famílias em aberto?" }
+];
+const log = $("#chatLog"); let ocupado = false, maxIniciado = false;
+async function pergunta(i){
+  if (ocupado) return; ocupado = true;
+  $$("#chatQ button").forEach(b => b.setAttribute("aria-pressed", b.dataset.q == i));
+  log.innerHTML = "";
+  const me = document.createElement("div"); me.className = "msg me"; me.textContent = RESP[i].q; log.append(me);
+  await sleep(reduce ? 0 : 450);
+  const t = document.createElement("div"); t.className = "msg max typing"; t.innerHTML = "<i></i><i></i><i></i>"; log.append(t);
+  await sleep(reduce ? 0 : 1100);
+  t.className = "msg max"; t.innerHTML = "";
+  const partes = RESP[i].a.split(/(<br>|<b>|<\/b>)/);
+  let alvo = t;
+  for (const parte of partes) {
+    if (parte === "<br>") { t.append(document.createElement("br")); alvo = t; continue; }
+    if (parte === "<b>") { alvo = document.createElement("b"); t.append(alvo); continue; }
+    if (parte === "</b>") { alvo = t; continue; }
+    for (const ch of parte) { alvo.append(ch); if (!reduce) await sleep(11); }
+  }
+  ocupado = false;
+}
+$$("#chatQ button").forEach(b => b.addEventListener("click", () => { maxIniciado = true; pergunta(+b.dataset.q); }));
+new IntersectionObserver(([e], obs) => { if (e.isIntersecting && !maxIniciado) { maxIniciado = true; pergunta(0); obs.disconnect(); } }, { threshold: .3 }).observe($(".chat"));
+
+/* ---------- Pix de enfeite ---------- */
+(function(){ let s = 11; const r = () => (s = (s * 9301 + 49297) % 233280) / 233280; const box = $("#pix");
+  for (let i = 0; i < 81; i++) { const row = Math.floor(i / 9), col = i % 9; const canto = (row < 3 && col < 3) || (row < 3 && col > 5) || (row > 5 && col < 3);
+    const el = document.createElement("i"); if (canto ? (row % 2 && col % 2 && !(row === 1 && col === 1) && !(row === 1 && col === 7) && !(row === 7 && col === 1)) : r() > .5) el.className = "o"; box.append(el); } })();
+
+/* ---------- Bento: brilho segue o mouse + leve inclinação ---------- */
+if (!reduce && matchMedia("(hover:hover)").matches) $$(".tile").forEach(t => {
+  t.addEventListener("pointermove", e => { const r = t.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    t.style.setProperty("--tx", x + "px"); t.style.setProperty("--ty", y + "px");
+    t.style.transform = `perspective(900px) rotateX(${(-(y / r.height - .5) * 4).toFixed(2)}deg) rotateY(${((x / r.width - .5) * 4).toFixed(2)}deg)`; });
+  t.addEventListener("pointerleave", () => t.style.transform = "");
+});
+
+/* ---------- Botões magnéticos ---------- */
+if (!reduce && matchMedia("(hover:hover)").matches) $$(".mag").forEach(b => {
+  b.addEventListener("pointermove", e => { const r = b.getBoundingClientRect(); b.style.transform = `translate(${(e.clientX - r.left - r.width / 2) * .18}px,${(e.clientY - r.top - r.height / 2) * .28}px)`; });
+  b.addEventListener("pointerleave", () => b.style.transform = "");
+});
+
+/* ---------- Linha do tempo enche ao rolar ---------- */
+const day = $("#day");
+function dayTick(){
+  const r = day.getBoundingClientRect();
+  const p = Math.min(1, Math.max(0, (innerHeight * .6 - r.top) / r.height));
+  day.style.setProperty("--fill", reduce ? 1 : p.toFixed(3));
+}
+
+/* ---------- Formulário em 3 passos ---------- */
+const form = $("#leadForm"), stepsEls = $$(".fstep"), bars = $$(".steps-bar i");
+const nextBtn = $("#nextBtn"), backBtn = $("#backBtn"), st = $("#fstatus");
+let passo = 0;
+const wa = $("#whatsapp");
+wa.addEventListener("input", () => {
+  const d = wa.value.replace(/\D/g, "").slice(0, 11);
+  wa.value = d.length > 6 ? `(${d.slice(0,2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}` : d.length > 2 ? `(${d.slice(0,2)}) ${d.slice(2)}` : d;
+});
+function irPara(i){
+  passo = i;
+  stepsEls.forEach((s, k) => s.classList.toggle("on", k === i));
+  bars.forEach((b, k) => b.classList.toggle("done", k <= i));
+  backBtn.hidden = i === 0;
+  nextBtn.firstChild.textContent = i === 2 ? "Quero minha demonstração " : "Continuar ";
+  st.textContent = "";
+  const f = stepsEls[i].querySelector("input:not([type=radio]):not([type=checkbox]),select");
+  if (f && matchMedia("(hover:hover)").matches) f.focus({ preventScroll: true });
+}
+function valida(i){
+  let ok = true;
+  const check = (id, cond) => { $("#" + id).closest(".field").classList.toggle("invalid", !cond); if (!cond) ok = false; };
+  if (i === 0) {
+    check("nome", $("#nome").value.trim().length > 1);
+    const temCargo = !!form.querySelector("input[name=cargo]:checked");
+    $("#cargoChoice").classList.toggle("invalid", !temCargo); if (!temCargo) ok = false;
+  }
+  if (i === 1) { check("escola", $("#escola").value.trim().length > 2); check("cidade", $("#cidade").value.trim().length > 1); }
+  if (i === 2) {
+    check("whatsapp", wa.value.replace(/\D/g, "").length >= 10);
+    const em = $("#email").value.trim(); check("email", !em || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em));
+    const lg = $("#lgpd").checked; $("#lgpdWrap").classList.toggle("invalid", !lg); if (!lg) ok = false;
+  }
+  return ok;
+}
+backBtn.addEventListener("click", () => irPara(passo - 1));
+form.addEventListener("submit", async ev => {
+  ev.preventDefault();
+  if (!valida(passo)) { st.textContent = "Confira os campos destacados."; return; }
+  if (passo < 2) { irPara(passo + 1); return; }
+  const fd = new FormData(form);
+  const payload = {
+    nome: fd.get("nome").trim(), cargo: fd.get("cargo"),
+    escola: fd.get("escola").trim(), cidade: fd.get("cidade").trim(), alunos: fd.get("alunos") || null,
+    interesses: fd.getAll("interesses"),
+    whatsapp: wa.value.replace(/\D/g, ""), email: $("#email").value.trim() || null,
+    mensagem: (fd.get("mensagem") || "").trim() || null,
+    consentimento_lgpd: true,
+    origem: params.get("utm_source") || params.get("origem") || null,
+    website: fd.get("website") || ""
+  };
+  nextBtn.disabled = true; nextBtn.firstChild.textContent = "Enviando… ";
+  try {
+    const r = await fetch(CONFIG.endpoint, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify(payload) });
+    if (r.status === 422) { const j = await r.json().catch(() => ({})); throw new Error(Object.values(j.errors || {})[0]?.[0] || "Confira os dados e tente de novo."); }
+    if (r.status === 429) throw new Error("Muitas tentativas seguidas. Espere um minuto e tente de novo.");
+    if (!r.ok) throw new Error();
+    concluido(payload);
+  } catch (e) {
+    st.textContent = e.message || "Não foi possível enviar agora. Fale com a gente pelo WhatsApp, logo ao lado.";
+    nextBtn.disabled = false; nextBtn.firstChild.textContent = "Quero minha demonstração ";
+  }
+});
+function concluido(p){
+  const primeiro = p.nome.split(" ")[0];
+  $("#doneTitle").textContent = `Prontinho, ${primeiro}!`;
+  $("#doneText").textContent = `Recebemos o pedido da ${p.escola}. Em breve a gente chama você no WhatsApp para marcar a demonstração.`;
+  $("#doneWa").href = `https://wa.me/${CONFIG.whatsapp}?text=` + encodeURIComponent(`Olá! Sou ${p.nome}, da ${p.escola} (${p.cidade}). Acabei de pedir uma demonstração pelo site.`);
+  form.hidden = true; const d = $("#doneBox"); d.hidden = false; d.focus();
+  confete();
+}
+
+/* ---------- Confete ---------- */
+function confete(){
+  if (reduce) return;
+  const c = $("#confetti"), x = c.getContext("2d"); c.width = innerWidth; c.height = innerHeight;
+  const cores = ["#1ad1ff", "#c4ff5e", "#ffc65c", "#ff6b5b", "#ffffff", "#7a5cff"];
+  const box = $("#formCard").getBoundingClientRect(), ox = box.left + box.width / 2, oy = box.top + 80;
+  const ps = Array.from({ length: 160 }, () => ({ x: ox, y: oy, vx: (Math.random() - .5) * 16, vy: Math.random() * -14 - 4, s: Math.random() * 7 + 4, c: cores[Math.random() * cores.length | 0], r: Math.random() * 6, vr: (Math.random() - .5) * .3 }));
+  let f = 0;
+  (function tick(){
+    x.clearRect(0, 0, c.width, c.height);
+    ps.forEach(p => { p.vy += .42; p.vx *= .99; p.x += p.vx; p.y += p.vy; p.r += p.vr; x.save(); x.translate(p.x, p.y); x.rotate(p.r); x.fillStyle = p.c; x.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); x.restore(); });
+    if (++f < 200) requestAnimationFrame(tick); else x.clearRect(0, 0, c.width, c.height);
+  })();
+}
+
+onScroll();
+</script>
+</body>
+</html>

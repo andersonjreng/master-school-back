@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Parametrizações → Calendário Escolar: feriados, recessos, sábados letivos
  * e eventos do ano letivo. Leitura para todos os perfis logados; alteração
- * só para a gestão (Administrador/Diretoria).
+ * só com a permissão calendario.editar.
  */
 class CalendarioEscolarController extends Controller
 {

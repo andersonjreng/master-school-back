@@ -36,7 +36,10 @@ class MaxAgentService
         $userName = $jwtUser->nome ?? 'Usuário';
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
 
-        $isAdmin = $this->hasAnyRole($funcoes, ['Administrador', 'Diretoria']);
+        // Equipe administrativa usa o perfil "gestão" do Max; o que cada um
+        // pode ver de fato é barrado pela API (as ferramentas usam o token
+        // do próprio usuário) e avisado no prompt logo abaixo.
+        $isAdmin = \App\Support\Papeis::ehAdministrativo($funcoes);
         $isProfessor = $this->hasAnyRole($funcoes, ['Professor']);
         $isResponsavel = $this->hasAnyRole($funcoes, ['Responsavel', 'Responsável']);
         $isAluno = $this->hasAnyRole($funcoes, ['Aluno']);
@@ -86,7 +89,21 @@ class MaxAgentService
             $turmasProfessor, $alunosProfessor, $disciplinasProfessor
         );
 
+        if ($isAdmin && !\App\Support\Papeis::ehAdministrador($funcoes)) {
+            $permitidas = app(\App\Services\Sistema\PermissaoService::class)->efetivas($funcoes);
+            $rotulos = array_map(fn ($p) => \App\Support\Permissoes::CATALOGO[$p][1], $permitidas);
+            $systemPrompt .= "\n\nPERMISSÕES DESTE USUÁRIO (perfil " . implode(', ', $funcoes) . "): "
+                . ($rotulos ? implode('; ', $rotulos) : 'nenhuma área de gestão') . ".\n"
+                . "Só ofereça e consulte o que estiver nessa lista. Se uma ferramenta retornar acesso negado, explique com gentileza "
+                . "que o perfil dele não tem acesso a essa área e que a direção pode liberar em Configurações > Permissões.";
+        }
+
         $tools = $this->toolRegistry->paraPerfil($isAdmin, $isResponsavel);
+
+        // Suporte: índice do manual (só o que este perfil usa) + ferramenta com o passo a passo.
+        $manual = app(\App\Services\Max\Manual\ManualService::class);
+        $systemPrompt .= "\n\n" . $manual->blocoPrompt($funcoes, $isProfessor);
+        $tools[] = \App\Services\Max\Manual\ManualService::ferramenta();
 
         if ($isResponsavel && !empty($dependentesPermitidos)) {
             $systemPrompt .= "\n\nDependentes disponíveis (use estes IDs ao chamar as ferramentas): "
@@ -172,7 +189,9 @@ class MaxAgentService
                             'usuario_id' => $userId, 'tool' => $bloco['name'], 'input' => $bloco['input'] ?? [],
                         ]);
 
-                        $resultado = $this->toolExecutor->executar(
+                        $resultado = $bloco['name'] === 'consultar_manual'
+                            ? $manual->consultar((string) ($bloco['input']['assunto'] ?? ''), $funcoes, $isProfessor)
+                            : $this->toolExecutor->executar(
                             $bloco['name'],
                             $bloco['input'] ?? [],
                             $token,

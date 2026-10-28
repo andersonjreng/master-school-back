@@ -93,10 +93,10 @@ class CadastroValidacaoService
             ->when($ignorarId, fn ($q) => $q->where('id', '!=', $ignorarId))->exists();
     }
 
-    public function validarEmail(?string $email, ?int $ignorarUsuarioId = null): ?string
+    public function validarEmail(?string $email, ?int $ignorarUsuarioId = null, bool $obrigatorio = true): ?string
     {
         if (!$this->texto($email)) {
-            return 'Informe o e-mail.';
+            return $obrigatorio ? 'Informe o e-mail.' : null;
         }
         if (!$this->emailValido($email)) {
             return 'E-mail inválido.';

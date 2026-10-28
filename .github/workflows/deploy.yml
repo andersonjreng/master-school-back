@@ -104,6 +104,8 @@ jobs:
             --exclude=./.rr.yaml \
             --exclude=./storage \
             --exclude=./.env.example \
+            --exclude=./landing-pais \
+            --exclude=./site-institucional \
             .
           sha256sum ../pacote/back.tar.gz | cut -d' ' -f1 > ../pacote/back.sha256
           ls -lh ../pacote

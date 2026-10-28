@@ -96,6 +96,18 @@ class OcorrenciaService
             DB::table('ocorrencias')->where('id', $id)->update($campos);
         } else {
             $id = DB::table('ocorrencias')->insertGetId($campos + ['autor_usuario_id' => $p->usuarioId]);
+            // Compartilhada com a família: aviso no celular dos responsáveis (interna não avisa ninguém).
+            if ($campos['visibilidade'] === 'familia') {
+                $familia = DB::table('aluno_responsavel as ar')->join('responsaveis as r', 'r.id', '=', 'ar.responsavel_id')
+                    ->where('ar.aluno_id', $campos['aluno_id'])->pluck('r.usuario_id')->all();
+                $nome = (string) DB::table('alunos as a')->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
+                    ->where('a.id', $campos['aluno_id'])->value('u.nome_completo');
+                app(\App\Services\Notificacoes\PushService::class)->avisar(
+                    $familia, 'Registro sobre ' . explode(' ', $nome)[0], $campos['titulo']
+                        . ($campos['exige_ciencia'] ? ' — confirme que está ciente.' : ''),
+                    '/comunicacao?aba=ocorrencias', "ocorrencia:$id",
+                );
+            }
         }
         return $this->buscar($id, $p);
     }

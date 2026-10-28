@@ -10,7 +10,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Painel da Direção (home de Administrador/Diretoria): o dia de hoje, os
+ * Painel da Direção (home da gestão, permissão painel.direcao): o dia de hoje, os
  * indicadores da escola com variação e série curta, alertas acionáveis e o
  * detalhamento de cada indicador (drill-down).
  *

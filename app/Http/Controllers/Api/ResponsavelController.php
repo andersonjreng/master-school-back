@@ -25,8 +25,8 @@ class ResponsavelController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem listar os responsáveis.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PESSOAS_VER)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não consulta o cadastro de responsáveis.'], 403);
         }
 
         $rows = DB::select("
@@ -82,8 +82,8 @@ class ResponsavelController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem cadastrar responsáveis.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PESSOAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não cadastra responsáveis.'], 403);
         }
 
         $v = $this->validacao;
@@ -150,8 +150,8 @@ class ResponsavelController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem editar responsáveis.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PESSOAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não edita responsáveis.'], 403);
         }
 
         $responsavelId = (int) $request->input('responsavel_id');
@@ -260,7 +260,7 @@ class ResponsavelController extends Controller
 
         // Só admin/diretoria podem consultar dependentes de outro usuário; o restante só vê os próprios.
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        $ehPrivilegiado = !empty(array_intersect(['Administrador', 'Diretoria'], $funcoes));
+        $ehPrivilegiado = \App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PESSOAS_VER);
         if (!$ehPrivilegiado && (int) ($jwtUser->id ?? 0) !== (int) $usuarioId) {
             return response()->json(['error' => 'Acesso negado. Você só pode consultar seus próprios dependentes.'], 403);
         }
@@ -304,6 +304,17 @@ class ResponsavelController extends Controller
         if (!$alunoId) {
             return response()->json(['error' => 'O ID do aluno é obrigatório.'], 400);
         }
+        // Fix: sem checagem — qualquer usuário logado via CPF/contato dos
+        // responsáveis de qualquer aluno. Agora: equipe ou a própria família.
+        $funcoes = $this->funcoes($request);
+        if (!\App\Support\Papeis::ehEquipe($funcoes)) {
+            $ehDaFamilia = DB::table('responsaveis as r')->join('aluno_responsavel as ar', 'ar.responsavel_id', '=', 'r.id')
+                ->where('r.usuario_id', (int) ($request->attributes->get('max_user')->id ?? 0))
+                ->where('ar.aluno_id', (int) $alunoId)->exists();
+            if (!$ehDaFamilia) {
+                return response()->json(['error' => 'Acesso negado.'], 403);
+            }
+        }
 
         $rows = DB::select('
             SELECT
@@ -339,8 +350,8 @@ class ResponsavelController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (!\App\Support\Papeis::ehGestor($funcoes)) {
-            return response()->json(['error' => 'Acesso negado. Apenas a administração/direção podem vincular responsáveis a alunos.'], 403);
+        if (!\App\Support\Permissoes::pode($funcoes, \App\Support\Permissoes::PESSOAS_GERENCIAR)) {
+            return response()->json(['error' => 'Acesso negado. Seu perfil não vincula responsáveis a alunos.'], 403);
         }
 
         $responsavelId = $request->input('responsavel_id');
@@ -381,7 +392,7 @@ class ResponsavelController extends Controller
     {
         $jwtUser = $request->attributes->get('max_user');
         $funcoes = (array) ($jwtUser->funcoes ?? $jwtUser->roles ?? []);
-        if (empty(array_intersect(['Responsável', 'Responsavel'], $funcoes))) {
+        if (!\App\Support\Papeis::ehResponsavel($funcoes)) {
             return response()->json(['error' => 'Painel exclusivo para responsáveis.'], 403);
         }
 

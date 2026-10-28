@@ -438,6 +438,63 @@ intervalo) e, pra transferência de arquivos, preferir um único `tar.gz` via
 `scp` + extração remota (com verificação de tamanho do arquivo antes de
 seguir) em vez de `scp -r`/`rsync` de muitos arquivos pequenos.
 
+### Landing dos pais — `pais.portalmasterschool.com.br` (desde 2026-10-22)
+
+Página pública onde pais pedem o MasterSchool na escola dos filhos. Não é
+tenant: os pedidos vão para o **banco comercial** (`ande2326_comercial`,
+conexão `comercial` em `config/database.php`), que o `ResolveTenantDatabase`
+nunca troca.
+
+```
+pais.portalmasterschool.com.br ─► ~/pais-front/          (index.html, img/, .htaccess)
+                                  └─ backend ─► ~/laravel-homolog/public
+```
+
+- **Backend na homologação de propósito**: a produção estava no código de
+  2026-10-03 e não dava pra publicar a `main` só pela landing. Quando a
+  produção estiver em dia, é só trocar o symlink
+  (`ln -sfn /home2/ande2326/laravel-deploy/public ~/pais-front/backend`) e
+  copiar as variáveis abaixo pro `.env` de lá.
+- O `.htaccess` (versionado em `landing-pais/`) só repassa `/api/interesse-pais*`
+  pro Laravel; o resto de `/api/*` dá 404. `/backend/*` direto continua
+  alcançável (o `.htaccess` do Laravel assume dentro do symlink), igual aos
+  fronts das escolas.
+- **Atualizar a landing**: o `deploy.yml` não publica `landing-pais/` (fica
+  excluída do pacote). Manual: `git archive --format=tar.gz -o pais.tar.gz
+  develop:landing-pais` → `scp` → `tar -xzf pais.tar.gz -C ~/pais-front`.
+- **Migration**: fora da pasta padrão, nunca roda com o `migrate` das escolas:
+  `php artisan migrate --database=comercial --path=database/migrations/comercial`.
+- **`.env`**: `DB_COMERCIAL_DATABASE`, `INTERESSE_PAIS_NOTIFICAR` (quem recebe
+  o aviso de cada pedido), `INTERESSE_PAIS_TOKEN` (senha do CSV) e `MAIL_*`.
+  O SMTP é a conta `naoresponda@portalmasterschool.com.br` (criada pra isso,
+  `br48.hostgator.com.br:465`, smtps); antes a homologação estava com
+  `MAIL_MAILER=log`.
+- **Usar os dados**: `php artisan interesse:resumo [nome da escola]` e
+  `https://pais.portalmasterschool.com.br/api/interesse-pais/exportar?token=...&escola=...`
+  (CSV pro Excel). A escola é texto livre e agrupa pelo slug (acento e
+  maiúscula não importam). O link `?escola=<nome>` já preenche o campo.
+
+### Site institucional — `portalmasterschool.com.br/` (desde 2026-10-23)
+
+- Página única estática, versionada em `site-institucional/` (excluída do
+  pacote do `deploy.yml`). No servidor: só `index.html` e `site-assets/` na
+  raiz de `~/portalmasterschool.com.br/`. As pastas `cepelc/`, `teste/`,
+  `emilly/` e `projeto/` não são tocadas.
+- **Não criar `.htaccess` na raiz**: as regras dele valeriam também dentro
+  das subpastas (inclusive o legado do cepelc, que tem usuários reais).
+- O formulário de escolas envia para
+  `https://pais.portalmasterschool.com.br/api/contato-escola` por CORS
+  (o Laravel libera `api/*` para qualquer origem). Por isso o `.htaccess` do
+  `pais-front` também repassa `contato-escola`.
+- Dados em `contato_escolas` (banco comercial). Aviso por e-mail no mesmo
+  destinatário da landing (`CONTATO_ESCOLAS_NOTIFICAR`, cai em
+  `INTERESSE_PAIS_NOTIFICAR`). CSV:
+  `https://pais.portalmasterschool.com.br/api/contato-escola/exportar?token=...`
+  (mesmo token da landing, salvo se `CONTATO_ESCOLAS_TOKEN` existir).
+- **Atualizar**: `git archive --format=tar.gz -o site.tar.gz develop:site-institucional`
+  → `scp` → `tar -xzf site.tar.gz -C ~/portalmasterschool.com.br index.html site-assets`.
+  O site antigo ficou em `~/deploy-backups/site-raiz-20261023-110415/index.html`.
+
 ## Achados de portabilidade (schema mais estrito localmente que em produção)
 
 Vários módulos migrados encontraram diferença de comportamento entre o

@@ -71,7 +71,7 @@ class DocumentoController extends Controller
         return response()->json([
             'success'      => true,
             'aluno'        => $alunoArr,
-            'escola'       => $this->escolaConfig->obter(),
+            'escola'       => $this->escolaConfig->paraDocumento(),
             'data_emissao' => now()->format('Y-m-d'),
         ]);
     }
@@ -133,7 +133,7 @@ class DocumentoController extends Controller
             'ano'          => $ano,
             'pagamentos'   => $pagamentos,
             'total_pago'   => round($total, 2),
-            'escola'       => $this->escolaConfig->obter(),
+            'escola'       => $this->escolaConfig->paraDocumento(),
             'data_emissao' => now()->format('Y-m-d'),
         ]);
     }
@@ -160,13 +160,17 @@ class DocumentoController extends Controller
         }
 
         // Cada turma/ano letivo distinto que o aluno já cursou, do mais antigo pro mais recente.
-        $anos = DB::select('
-            SELECT DISTINCT m.ano_letivo, m.turma_id, t.nome_turma
+        $numeros = app(\App\Services\Matriculas\NumeroMatriculaService::class);
+        $numero = $numeros->sqlNumeroDoAno();
+        $porAno = $numeros->porAno();
+        $anos = DB::select("
+            SELECT DISTINCT m.ano_letivo, m.turma_id, t.nome_turma, t.status AS status_turma, $numero AS numero
             FROM matriculas m
             JOIN turmas t ON m.turma_id = t.id
+            JOIN alunos a ON a.id = m.aluno_id
             WHERE m.aluno_id = ?
             ORDER BY m.ano_letivo ASC
-        ', [$alunoId]);
+        ", [$alunoId]);
 
         $historico = [];
         foreach ($anos as $ano) {
@@ -181,11 +185,18 @@ class DocumentoController extends Controller
             $somaMaxima = (float) ($notas->soma_maxima ?? 0);
             $mediaGeral = $somaMaxima > 0 ? round(($somaNota / $somaMaxima) * 10, 1) : null;
 
+            // Resultado registrado no encerramento do ano vale mais que a conta pela média.
+            $registrado = $porAno ? DB::table('matriculas')->where('aluno_id', $alunoId)->where('turma_id', $ano->turma_id)
+                ->whereNotNull('resultado')->orderByDesc('id')->value('resultado') : null;
             $historico[] = [
                 'ano_letivo'  => (int) $ano->ano_letivo,
+                'numero'      => $ano->numero,
                 'nome_turma'  => $ano->nome_turma,
                 'media_geral' => $mediaGeral,
-                'status'      => $mediaGeral === null ? 'Sem notas lançadas' : ($mediaGeral >= 6 ? 'Aprovado' : 'Reprovado'),
+                'status'      => [
+                    'promovido' => 'Aprovado', 'retido' => 'Retido', 'concluiu' => 'Concluiu a etapa',
+                ][$registrado] ?? ($ano->status_turma === 'Ativa' ? 'Cursando'
+                    : ($mediaGeral === null ? 'Sem notas lançadas' : ($mediaGeral >= 6 ? 'Aprovado' : 'Reprovado'))),
             ];
         }
 
@@ -193,7 +204,7 @@ class DocumentoController extends Controller
             'success'      => true,
             'aluno'        => $aluno,
             'historico'    => $historico,
-            'escola'       => $this->escolaConfig->obter(),
+            'escola'       => $this->escolaConfig->paraDocumento(),
             'data_emissao' => now()->format('Y-m-d'),
         ]);
     }
@@ -223,10 +234,12 @@ class DocumentoController extends Controller
 
         // Resolve a turma do aluno naquele ano letivo via matriculas (histórico) —
         // não assume a turma ATUAL, pra continuar certo após promoção/transferência.
+        $numero = app(\App\Services\Matriculas\NumeroMatriculaService::class)->sqlNumeroDoAno();
         $rowTurma = DB::selectOne("
-            SELECT turma_id, t.nome_turma
+            SELECT turma_id, t.nome_turma, $numero AS numero
             FROM matriculas m
             JOIN turmas t ON m.turma_id = t.id
+            JOIN alunos a ON a.id = m.aluno_id
             WHERE m.aluno_id = ? AND m.ano_letivo = ?
             ORDER BY (m.status = 'ativa') DESC, m.id DESC
             LIMIT 1
@@ -239,6 +252,7 @@ class DocumentoController extends Controller
         $turmaId = (int) $rowTurma->turma_id;
         $alunoArr = (array) $aluno;
         $alunoArr['nome_turma'] = $rowTurma->nome_turma;
+        $alunoArr['matricula'] = $rowTurma->numero ?: $alunoArr['matricula'];
 
         $unidades = DB::select(
             'SELECT id, nome_unidade FROM unidades_letivas WHERE ano_letivo = ? ORDER BY id ASC',
@@ -333,7 +347,7 @@ class DocumentoController extends Controller
                 'faltas'     => $faltas,
                 'percentual' => $percentual,
             ],
-            'escola'       => $this->escolaConfig->obter(),
+            'escola'       => $this->escolaConfig->paraDocumento(),
             'data_emissao' => now()->format('Y-m-d'),
         ]);
     }
@@ -382,7 +396,68 @@ class DocumentoController extends Controller
             'success'      => true,
             'aluno'        => $aluno,
             'responsaveis' => $responsaveis,
-            'escola'       => $this->escolaConfig->obter(),
+            'escola'       => $this->escolaConfig->paraDocumento(),
+            'data_emissao' => now()->format('Y-m-d'),
+        ]);
+    }
+
+    /**
+     * Histórico de matrículas (pedido pela inspeção escolar): dados do aluno e
+     * dos responsáveis e a matrícula de cada ano letivo — número, turma,
+     * período e situação. A vaga garantida por rematrícula (ainda não
+     * efetivada) aparece como a matrícula do ano seguinte.
+     */
+    public function historicoMatriculas(Request $request): JsonResponse
+    {
+        $alunoId = (int) $request->query('aluno_id', 0);
+        if (!$alunoId) {
+            return response()->json(['error' => 'aluno_id é obrigatório.'], 400);
+        }
+        if (!$this->acesso->alunoAcessivel($request->attributes->get('max_user'), $alunoId)) {
+            return response()->json(['error' => 'Acesso negado a este aluno.'], 403);
+        }
+
+        $aluno = DB::table('alunos as a')->join('usuarios as u', 'u.id', '=', 'a.usuario_id')->where('a.id', $alunoId)
+            ->first(['a.id as aluno_id', 'u.nome_completo as nome_aluno', 'a.matricula', 'a.cpf', 'a.data_nascimento', 'a.sexo',
+                'a.endereco', 'a.numero', 'a.complemento', 'a.bairro', 'a.cidade', 'a.uf', 'a.cep', 'a.status_matricula']);
+        if (!$aluno) {
+            return response()->json(['error' => 'Aluno não encontrado.'], 404);
+        }
+
+        $responsaveis = DB::table('aluno_responsavel as ar')->join('responsaveis as r', 'r.id', '=', 'ar.responsavel_id')
+            ->join('usuarios as u', 'u.id', '=', 'r.usuario_id')->where('ar.aluno_id', $alunoId)
+            ->orderByDesc('ar.principal')->orderBy('u.nome_completo')
+            ->get(['u.nome_completo as nome', 'ar.parentesco', 'ar.principal', 'r.cpf', 'r.telefone', 'u.email', 'r.profissao']);
+
+        $temNumero = app(\App\Services\Matriculas\NumeroMatriculaService::class)->porAno();
+        $matriculas = DB::table('matriculas as m')->leftJoin('turmas as t', 't.id', '=', 'm.turma_id')->where('m.aluno_id', $alunoId)
+            ->orderBy('m.ano_letivo')->orderBy('m.id')
+            ->get(array_merge(['m.ano_letivo', 't.nome_turma', 't.turno', 'm.data_inicio', 'm.data_fim', 'm.status',
+                'm.motivo_encerramento', 'm.motivo_detalhe'], $temNumero ? ['m.numero', 'm.resultado'] : []))
+            ->map(fn ($m) => (array) $m + ['numero' => null, 'resultado' => null, 'reserva' => false])->all();
+
+        $rematricula = app(\App\Services\Rematricula\RematriculaService::class);
+        if ($rematricula->disponivel()) {
+            $reservas = DB::table('rematriculas as r')->join('rematricula_campanhas as c', 'c.id', '=', 'r.campanha_id')
+                ->leftJoin('turmas as t', 't.id', '=', 'r.turma_destino_id')
+                ->where('r.aluno_id', $alunoId)->whereIn('r.status', ['aguardando_pagamento', 'confirmada'])->whereNull('r.efetivada_em')
+                ->get(['c.ano_destino', 'r.numero_matricula', 't.nome_turma', 't.turno', 'r.aceite_em', 'r.status']);
+            foreach ($reservas as $r) {
+                $matriculas[] = [
+                    'ano_letivo' => (int) $r->ano_destino, 'numero' => $r->numero_matricula, 'nome_turma' => $r->nome_turma,
+                    'turno' => $r->turno, 'data_inicio' => null, 'data_fim' => null, 'status' => 'reservada', 'resultado' => null,
+                    'motivo_encerramento' => null, 'motivo_detalhe' => null, 'reserva' => true,
+                    'rematricula_em' => $r->aceite_em ? substr($r->aceite_em, 0, 10) : null,
+                ];
+            }
+        }
+
+        return response()->json([
+            'success'      => true,
+            'aluno'        => $aluno,
+            'responsaveis' => $responsaveis,
+            'matriculas'   => $matriculas,
+            'escola'       => $this->escolaConfig->paraDocumento(),
             'data_emissao' => now()->format('Y-m-d'),
         ]);
     }
