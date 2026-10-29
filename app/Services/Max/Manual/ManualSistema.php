@@ -47,7 +47,7 @@ final class ManualSistema
             [
                 'id' => 'navegacao-celular', 'area' => 'Geral', 'titulo' => 'Como navegar pelo celular (barra de baixo e Menu)',
                 'menu' => 'Barra de botões no rodapé da tela do celular', 'acesso' => [],
-                'palavras' => 'celular menu barra de baixo abas rodape navegar onde fica tela cheia botoes inicio voltar sair perfil buscar ir para app adicionar novo cadastrar botao mais +',
+                'palavras' => 'celular menu barra de baixo abas rodape navegar atualizar recarregar puxar onde fica tela cheia botoes inicio voltar sair perfil buscar ir para app adicionar novo cadastrar botao mais +',
                 'passos' => "No celular o menu lateral dá lugar a uma barra fixa no rodapé, como nos aplicativos:\n"
                     . "- Início, as duas telas mais usadas pelo seu perfil, o Max no centro e Menu. Professor: Turmas e Diário. Família: Boletim e Pagar. "
                     . "Equipe: Pessoas e Finanças (ou as telas que o seu perfil acessa).\n"
@@ -56,6 +56,7 @@ final class ManualSistema
                     . "- No fim do Menu ficam os ajustes: modo escuro, avisos no aparelho, instalar app e Sair.\n"
                     . "- Comunicação: pelo sino no topo ou pelo Menu.\n"
                     . "- O botão 'voltar' do Android fecha o Menu e o Max sem sair da tela. Tocar na aba em que você já está volta ao topo.\n"
+                    . "- Para atualizar a tela (ver dados novos), puxe a página para baixo estando no topo e solte quando o círculo completar.\n"
                     . "- Ao rolar a tela a barra encolhe; ela some enquanto o teclado está aberto e nas telas com botão de salvar fixo (chamada, notas).\n"
                     . "- Nos cadastros (alunos, responsáveis, professores, turmas, disciplinas, usuários) o botão '+' para adicionar fica flutuando no canto "
                     . "de baixo, acima da barra, ao alcance do polegar.\n"
