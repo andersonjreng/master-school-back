@@ -45,6 +45,7 @@ use Illuminate\Support\Facades\Route;
 
 // Equivalente a api/auth/login.php — sem middleware, é o próprio ponto de entrada.
 Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/renovar', [AuthController::class, 'renovar'])->middleware('max.jwt');
 Route::get('/auth/permissoes', [AuthController::class, 'permissoes'])->middleware('max.jwt');
 
 // Acesso por permissão (max.pode:...), não por perfil: o padrão de cada
@@ -206,6 +207,13 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
         Route::get('/minhas-parcelas/{id}/pix', [ParcelaController::class, 'meuPix'])->whereNumber('id');
     });
 
+    // Planos e descontos (só leitura) também para quem faz a rematrícula na secretaria:
+    // a rematrícula presencial escolhe o plano e o desconto do ano novo.
+    Route::middleware('max.pode:financeiro.operar,rematricula.gerenciar')->group(function () {
+        Route::get('/planos', [PlanoPagamentoController::class, 'index']);
+        Route::get('/descontos', [DescontoPadraoController::class, 'index']);
+    });
+
     Route::middleware('max.pode:financeiro.operar')->group(function () {
         Route::get('/configuracoes', [FinanceiroController::class, 'configuracoes']);
         Route::get('/dashboard', [FinanceiroController::class, 'dashboard']);
@@ -215,9 +223,6 @@ Route::prefix('financeiro')->middleware('max.jwt')->group(function () {
         Route::get('/contratos/dispensas', [ContratoFinanceiroController::class, 'dispensas']);
         Route::post('/contratos/dispensas', [ContratoFinanceiroController::class, 'dispensar']);
         Route::delete('/contratos/dispensas', [ContratoFinanceiroController::class, 'removerDispensa']);
-
-        Route::get('/planos', [PlanoPagamentoController::class, 'index']);
-        Route::get('/descontos', [DescontoPadraoController::class, 'index']);
 
         Route::get('/matriculas/alunos-turma', [MatriculaFinanceiraController::class, 'alunosTurmaMatricula']);
         Route::get('/matriculas', [MatriculaFinanceiraController::class, 'index']);

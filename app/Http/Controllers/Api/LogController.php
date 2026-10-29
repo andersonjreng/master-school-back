@@ -10,6 +10,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use App\Support\Papeis;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -29,7 +31,29 @@ class LogController extends Controller
     /** Categorias que contam como "ação" (mudança de dados) nos totais. */
     private const CATEGORIAS_ACAO = "'cadastro','academico','financeiro','comunicacao','sistema'";
 
+    /**
+     * Forma de acesso de cada linha: app instalado, navegador no celular
+     * (ou tablet) ou computador. App só é conhecido desde a 2026_10_29; antes
+     * disso o celular conta como navegador.
+     */
+    private const FORMA_ACESSO = "CASE WHEN origem = 'app' THEN 'app'
+        WHEN dispositivo IN ('celular', 'tablet') THEN 'celular'
+        WHEN dispositivo = 'computador' THEN 'computador' END";
+
+    private ?bool $temAcesso = null;
+
     public function __construct(private LogSistemaService $log) {}
+
+    /** Colunas lidas; origem/dispositivo só depois da migration 2026_10_29. */
+    private function colunas(): array
+    {
+        return $this->temColunasAcesso() ? [...self::COLUNAS, 'origem', 'dispositivo'] : self::COLUNAS;
+    }
+
+    private function temColunasAcesso(): bool
+    {
+        return $this->temAcesso ??= Schema::hasColumn('logs_sistema', 'origem');
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -45,7 +69,7 @@ class LogController extends Controller
         $logs = $query
             ->orderBy('criado_em', $asc ? 'asc' : 'desc')->orderBy('id', $asc ? 'asc' : 'desc')
             ->limit($porPagina)->offset(($pagina - 1) * $porPagina)
-            ->get(self::COLUNAS)
+            ->get($this->colunas())
             ->map(fn ($row) => $this->formatar($row));
 
         return response()->json([
@@ -59,7 +83,7 @@ class LogController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $row = DB::table('logs_sistema')->where('id', $id)->first(self::COLUNAS);
+        $row = DB::table('logs_sistema')->where('id', $id)->first($this->colunas());
         if (!$row) {
             return response()->json(['error' => 'Registro não encontrado.'], 404);
         }
@@ -160,7 +184,80 @@ class LogController extends Controller
             'top_exportacoes' => $topExportacoes,
             'seguranca' => $this->seguranca($ini, $fim),
             'online' => $this->online(),
+            'acesso' => $this->acesso($noPeriodo()),
         ]);
+    }
+
+    /**
+     * "Como acessam": pessoas e sessões por forma de acesso (app instalado,
+     * navegador no celular, computador), no total e por perfil. Quem usa
+     * mais de uma forma conta em cada uma.
+     */
+    private function acesso(Builder $q): ?array
+    {
+        if (!$this->temColunasAcesso()) {
+            return null;
+        }
+
+        $linhas = $q->whereNotNull('usuario_id')
+            ->selectRaw('usuario_id, ' . self::FORMA_ACESSO . ' as forma, COUNT(DISTINCT sessao_id) as sessoes')
+            ->groupByRaw('usuario_id, forma')->get()
+            ->filter(fn ($l) => $l->forma !== null);
+
+        $perfis = DB::table('usuario_funcao as uf')->join('funcoes as f', 'f.id', '=', 'uf.funcao_id')
+            ->whereIn('uf.usuario_id', $linhas->pluck('usuario_id')->unique()->all())
+            ->get(['uf.usuario_id', 'f.nome_funcao'])
+            ->groupBy('usuario_id')
+            ->map(fn ($fs) => $this->grupoPerfil($fs->pluck('nome_funcao')->all()));
+
+        $formas = ['app', 'celular', 'computador'];
+        $vazio = array_fill_keys($formas, 0);
+        $usuarios = $vazio;
+        $sessoes = $vazio;
+        $porPerfil = [];
+        foreach ($linhas as $l) {
+            $usuarios[$l->forma]++;
+            $sessoes[$l->forma] += (int) $l->sessoes;
+            $grupo = $perfis[$l->usuario_id] ?? 'outros';
+            $porPerfil[$grupo] ??= ['perfil' => $grupo, 'usuarios' => []] + $vazio;
+            $porPerfil[$grupo][$l->forma]++;
+            $porPerfil[$grupo]['usuarios'][$l->usuario_id] = true;
+        }
+
+        $ordem = ['familia', 'professor', 'equipe', 'outros'];
+        $porPerfil = collect($porPerfil)
+            ->map(fn ($p) => ['usuarios' => count($p['usuarios'])] + $p)
+            ->sortBy(fn ($p) => array_search($p['perfil'], $ordem, true))->values();
+
+        return [
+            'formas' => array_map(fn ($f) => ['forma' => $f, 'usuarios' => $usuarios[$f], 'sessoes' => $sessoes[$f]], $formas),
+            'usuarios' => $linhas->pluck('usuario_id')->unique()->count(),
+            'por_perfil' => $porPerfil,
+        ];
+    }
+
+    /** Forma de acesso de uma linha, por extenso (CSV). */
+    private static function rotuloAcesso(object $r): string
+    {
+        $tipo = ['celular' => 'celular', 'tablet' => 'tablet', 'computador' => 'computador'][$r->dispositivo ?? ''] ?? null;
+
+        return match (true) {
+            ($r->origem ?? null) === 'app' => 'App instalado' . ($tipo ? " ($tipo)" : ''),
+            $tipo === 'computador' => 'Computador',
+            $tipo !== null => "Navegador ($tipo)",
+            default => '',
+        };
+    }
+
+    /** Equipe (administrativos), professor, família (responsável/aluno). */
+    private function grupoPerfil(array $funcoes): string
+    {
+        return match (true) {
+            Papeis::ehAdministrativo($funcoes) => 'equipe',
+            in_array(Papeis::PROFESSOR, $funcoes, true) => 'professor',
+            (bool) array_intersect([Papeis::RESPONSAVEL, Papeis::ALUNO], $funcoes) => 'familia',
+            default => 'outros',
+        };
     }
 
     /** Sessões de login (agrupadas pelo "sid" do JWT) no período. */
@@ -183,7 +280,8 @@ class LogController extends Controller
                 COALESCE(SUM(categoria IN (" . self::CATEGORIAS_ACAO . ") AND metodo <> 'GET'), 0) as acoes,
                 COALESCE(SUM(acao = 'ACESSO_NEGADO'), 0) as negados,
                 COALESCE(SUM(acao = 'LOGOUT'), 0) as logout,
-                MAX(ip_address) as ip_address, MAX(user_agent) as user_agent")
+                MAX(ip_address) as ip_address, MAX(user_agent) as user_agent"
+                . ($this->temColunasAcesso() ? ', MAX(' . self::FORMA_ACESSO . ') as forma' : ''))
             ->groupBy('sessao_id')->orderByDesc('fim')
             ->limit($porPagina)->offset(($pagina - 1) * $porPagina)
             ->get()
@@ -208,7 +306,7 @@ class LogController extends Controller
     {
         $eventos = DB::table('logs_sistema')->where('sessao_id', $sid)
             ->orderBy('criado_em')->orderBy('id')->limit(3000)
-            ->get(self::COLUNAS)->map(fn ($row) => $this->formatar($row));
+            ->get($this->colunas())->map(fn ($row) => $this->formatar($row));
 
         if ($eventos->isEmpty()) {
             return response()->json(['error' => 'Sessão não encontrada.'], 404);
@@ -238,14 +336,14 @@ class LogController extends Controller
         return response()->streamDownload(function () use ($query, $limite, $categorias) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['ID', 'Data/hora', 'Usuário', 'Categoria', 'Ação', 'Descrição', 'Tela', 'Endpoint', 'Método', 'Status', 'IP', 'Sessão', 'Navegador'], ';');
+            fputcsv($out, ['ID', 'Data/hora', 'Usuário', 'Categoria', 'Ação', 'Descrição', 'Tela', 'Endpoint', 'Método', 'Status', 'IP', 'Sessão', 'Navegador', 'Acesso'], ';');
 
             // Lotes de 1000 por keyset (id decrescente) — memória constante.
             $ultimoId = null;
             $restante = $limite;
             while ($restante > 0) {
                 $lote = (clone $query)->when($ultimoId, fn ($q) => $q->where('id', '<', $ultimoId))
-                    ->orderByDesc('id')->limit(min(1000, $restante))->get(self::COLUNAS);
+                    ->orderByDesc('id')->limit(min(1000, $restante))->get($this->colunas());
                 if ($lote->isEmpty()) {
                     break;
                 }
@@ -253,7 +351,7 @@ class LogController extends Controller
                     fputcsv($out, [
                         $r->id, Carbon::parse($r->criado_em)->format('d/m/Y H:i:s'), $r->username,
                         $categorias[$r->categoria] ?? $r->categoria, $r->acao, $r->descricao, $r->tela,
-                        $r->endpoint, $r->metodo, $r->status_code, $r->ip_address, $r->sessao_id, $r->user_agent,
+                        $r->endpoint, $r->metodo, $r->status_code, $r->ip_address, $r->sessao_id, $r->user_agent, self::rotuloAcesso($r),
                     ], ';');
                 }
                 $ultimoId = $lote->last()->id;
@@ -269,7 +367,8 @@ class LogController extends Controller
     /**
      * Filtros comuns: busca, usuario_id, usuario (nome), acoes, categorias
      * (listas separadas por vírgula), ocultar_navegacao, resultado
-     * (sucesso|falha), ip, sessao_id, tela, metodo, data_inicio, data_fim.
+     * (sucesso|falha), ip, sessao_id, tela, metodo, acesso (app|celular|computador),
+     * data_inicio, data_fim.
      */
     private function filtrar(Builder $q, Request $r, bool $comDatas = true): Builder
     {
@@ -306,6 +405,10 @@ class LogController extends Controller
         }
         if ($tela = trim((string) $r->query('tela'))) {
             $q->where('tela', 'like', addcslashes($tela, '%_\\') . '%');
+        }
+        $acesso = (string) $r->query('acesso');
+        if (in_array($acesso, ['app', 'celular', 'computador'], true) && $this->temColunasAcesso()) {
+            $q->whereRaw('(' . self::FORMA_ACESSO . ') = ?', [$acesso]);
         }
 
         if ($comDatas) {

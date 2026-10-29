@@ -29,12 +29,56 @@ final class ManualSistema
                 'passos' => "O MasterSchool funciona como aplicativo, sem precisar de loja.\n"
                     . "- Android (Chrome): entre no endereço da escola e toque em 'Instalar' no aviso que aparece no rodapé; ou menu ⋮ do Chrome > 'Instalar app'.\n"
                     . "- iPhone (Safari): toque em Compartilhar (quadrado com seta) > 'Adicionar à Tela de Início'.\n"
+                    . "- Já pelo navegador do celular: Menu (barra de baixo) > 'Instalar app', quando o celular oferecer.\n"
                     . "- Computador: botão de download no topo da tela, ao lado do sino.\n"
                     . "Quando sair uma versão nova, aparece 'Nova versão disponível' no rodapé: toque em Atualizar.",
             ],
             [
+                'id' => 'busca-rapida', 'area' => 'Geral', 'titulo' => 'Busca rápida no computador (Ctrl+K)',
+                'menu' => 'Campo "Ir para…" no topo da tela, ou as teclas Ctrl+K (⌘K no Mac)', 'acesso' => [],
+                'palavras' => 'busca rapida ctrl k atalho teclado ir para procurar tela turma aluno achar encontrar pesquisar',
+                'passos' => "No computador, aperte Ctrl+K (ou clique em 'Ir para…' no topo) e digite:\n"
+                    . "- o nome de uma tela (ex.: 'recibos', 'rematrícula') para abrir direto;\n"
+                    . "- o nome de uma turma (ex.: '2º ano') para abrir a chamada dela;\n"
+                    . "- o nome ou a matrícula de um aluno para abrir a ficha dele (para quem acessa Pessoas).\n"
+                    . "Use as setas e Enter para escolher, Esc para fechar. A última opção manda o que você digitou como pergunta para o Max. "
+                    . "No celular, a mesma busca de telas fica no 'Ir para...' do Menu.",
+            ],
+            [
+                'id' => 'manter-conectado', 'area' => 'Geral', 'titulo' => 'Continuar conectado no celular (sem digitar a senha toda vez)',
+                'menu' => 'Tela de login > "Manter conectado neste aparelho"', 'acesso' => [],
+                'palavras' => 'manter conectado lembrar login senha toda vez entrar de novo sair desconectou deslogou sessao expirou celular app',
+                'passos' => "Na tela de login, deixe marcado 'Manter conectado neste aparelho' (no celular e no app já vem marcado; no computador, "
+                    . "marque só se o computador for seu).\n"
+                    . "- Assim o app abre direto, sem pedir a senha, enquanto você usar ao menos uma vez por mês.\n"
+                    . "- Para desconectar: Menu > Sair (no computador, no seu nome no topo > Sair).\n"
+                    . "- Trocar a senha ou ter o acesso desativado pela escola desconecta todos os aparelhos.\n"
+                    . "Sem a opção marcada, a sessão vale até fechar o navegador (no máximo 24 horas).",
+            ],
+            [
+                'id' => 'navegacao-celular', 'area' => 'Geral', 'titulo' => 'Como navegar pelo celular (barra de baixo e Menu)',
+                'menu' => 'Barra de botões no rodapé da tela do celular', 'acesso' => [],
+                'palavras' => 'celular menu barra de baixo abas rodape navegar atualizar recarregar puxar onde fica tela cheia botoes inicio voltar sair perfil buscar ir para app adicionar novo cadastrar botao mais +',
+                'passos' => "No celular o menu lateral dá lugar a uma barra fixa no rodapé, como nos aplicativos:\n"
+                    . "- Início, as duas telas mais usadas pelo seu perfil, o Max no centro e Menu. Professor: Turmas e Diário. Família: Boletim e Pagar. "
+                    . "Equipe: Pessoas e Finanças (ou as telas que o seu perfil acessa).\n"
+                    . "- Menu abre todas as telas em botões grandes, separados por seção. O campo 'Ir para...' filtra pelo nome; o 'Ir' do teclado abre a primeira. "
+                    . "Telas com o ícone de computador funcionam melhor no computador.\n"
+                    . "- No fim do Menu ficam os ajustes: modo escuro, avisos no aparelho, instalar app e Sair.\n"
+                    . "- Comunicação: pelo sino no topo ou pelo Menu.\n"
+                    . "- O botão 'voltar' do Android fecha o Menu e o Max sem sair da tela. Tocar na aba em que você já está volta ao topo.\n"
+                    . "- Para atualizar a tela (ver dados novos), puxe a página para baixo estando no topo e solte quando o círculo completar.\n"
+                    . "- Ao rolar a tela a barra encolhe; ela some enquanto o teclado está aberto e nas telas com botão de salvar fixo (chamada, notas).\n"
+                    . "- Nos cadastros (alunos, responsáveis, professores, turmas, disciplinas, usuários) o botão '+' para adicionar fica flutuando no canto "
+                    . "de baixo, acima da barra, ao alcance do polegar.\n"
+                    . "- A tela inicial do celular põe primeiro o que se usa no dia: o professor vê a aula em andamento em destaque, com 'Chamada' e "
+                    . "'Registro' a um toque; a família vê o filho escolhido, a mensalidade em atraso ou perto de vencer (botão 'Pagar com Pix ou boleto', "
+                    . "que já abre o pagamento) e a aula de agora; a direção vê 'Precisa de você' logo depois do resumo. Os números deslizam para o lado "
+                    . "e os gráficos ficam no fim. Para ver outro ano letivo (ou atualizar os números), a direção toca no chip com o ano, no canto do topo.",
+            ],
+            [
                 'id' => 'push', 'area' => 'Geral', 'titulo' => 'Receber avisos no celular (notificações push)',
-                'menu' => 'Aviso "Receba os avisos da escola" no rodapé, ou Sino > "Avisos neste aparelho"', 'acesso' => [],
+                'menu' => 'Aviso "Receba os avisos da escola" no rodapé, Sino > "Avisos neste aparelho" ou, no celular, Menu > Ajustes > Avisos', 'acesso' => [],
                 'palavras' => 'push notificacao celular aviso app fechado receber avisos ativar desativar desligar bloqueado tela de bloqueio',
                 'passos' => "Os avisos do sino (nota lançada, avaliação marcada, falta, boleto, comunicado, recado, ocorrência, rematrícula) também chegam na tela do "
                     . "celular, mesmo com o app fechado.\n1. Toque em 'Ativar' no aviso 'Receba os avisos da escola' (rodapé) — ou abra o Sino e toque em "
@@ -53,16 +97,17 @@ final class ManualSistema
             ],
             [
                 'id' => 'tema', 'area' => 'Geral', 'titulo' => 'Modo escuro',
-                'menu' => 'Botão de lua/sol no topo da tela', 'acesso' => [],
+                'menu' => 'Botão de lua/sol no topo da tela (no celular: Menu > Ajustes)', 'acesso' => [],
                 'palavras' => 'tema escuro claro noturno dark cor',
-                'passos' => 'Toque no botão de lua (ou sol) no topo para alternar entre o modo claro e o escuro. A escolha fica salva no aparelho.',
+                'passos' => 'Toque no botão de lua (ou sol) no topo para alternar entre o modo claro e o escuro. No celular fica no Menu (barra de baixo) > Ajustes > Modo escuro. A escolha fica salva no aparelho.',
             ],
             [
                 'id' => 'max', 'area' => 'Geral', 'titulo' => 'Max — o assistente do sistema',
-                'menu' => 'Max (menu) ou o botão redondo do Max no canto da tela', 'acesso' => [],
+                'menu' => 'Max (menu) ou o botão redondo do Max no canto da tela (no celular, o botão do centro da barra de baixo)', 'acesso' => [],
                 'palavras' => 'max assistente ia inteligencia artificial chat pergunta conversa historico limite mensagens',
                 'passos' => "O Max responde dúvidas sobre o sistema e consulta dados conforme o seu perfil. Abra pelo menu 'Max' (tela cheia, com histórico "
-                    . "de conversas no botão ☰) ou pelo botão redondo no canto. Há um limite de mensagens por mês, mostrado no topo da conversa.",
+                    . "de conversas no botão ☰) ou pelo botão redondo no canto. No celular o Max é o botão do centro da barra de baixo: abre em tela cheia "
+                    . "por cima da tela atual, e o número nele indica pendências que o Max encontrou. Há um limite de mensagens por mês, mostrado no topo da conversa.",
             ],
             [
                 'id' => 'home', 'area' => 'Geral', 'titulo' => 'Tela inicial (Home)',
@@ -92,12 +137,17 @@ final class ManualSistema
             [
                 'id' => 'chamada', 'area' => 'Pedagógico', 'titulo' => 'Fazer a chamada (lançar frequência)',
                 'menu' => 'Minhas Turmas > card da turma > Chamada', 'acesso' => ['professor' => true, 'pode' => ['pedagogico.editar']],
-                'palavras' => 'chamada frequencia presenca falta lancar marcar justificar justificativa faltou presente',
+                'palavras' => 'chamada frequencia presenca falta lancar marcar justificar justificativa faltou presente sem internet offline wifi conexao guardada',
                 'passos' => "1. Minhas Turmas > no card da turma, toque em Chamada.\n2. Confira a data no topo (troque se for outro dia).\n"
                     . "3. Marque P ou F para cada aluno (ou use 'Presentes'/'Faltantes' para marcar todos).\n"
-                    . "4. Em uma falta, toque no balão ao lado para justificar.\n5. Toque em 'Lançar frequência'.\n"
+                    . "4. Em uma falta, toque no balão ao lado para justificar (no computador, o '+' da coluna Justificativa).\n"
+                    . "5. Toque em 'Lançar frequência' — a barra fixa embaixo mostra quantos P, F e alunos sem marcar.\n"
                     . "Para corrigir depois: abra a mesma data > Editar (ou Excluir). O ícone de calendário mostra os dias já lançados. "
-                    . "Se o dia não tiver aula no calendário escolar, o sistema avisa antes de lançar.",
+                    . "Se o dia não tiver aula no calendário escolar, o sistema avisa antes de lançar.\n"
+                    . "Sem internet na sala: a chamada abre com a lista de alunos da última vez que a turma foi aberta com internet. "
+                    . "Ao tocar em 'Lançar frequência', ela fica guardada no aparelho ('Guardada no aparelho') e é enviada sozinha quando a "
+                    . "conexão voltar — aparece 'Chamada enviada' no topo. Não feche a sessão (Sair) antes do envio. Se a escola recusar "
+                    . "(ex.: dia bloqueado), aparece um aviso vermelho no topo; toque nele para abrir a chamada e lançar de novo.",
             ],
             [
                 'id' => 'registro-aula', 'area' => 'Pedagógico', 'titulo' => 'Registrar a aula dada (conteúdo)',
@@ -163,8 +213,10 @@ final class ManualSistema
                 'menu' => 'Boletim', 'acesso' => ['pode' => ['pedagogico.ver'], 'perfis' => ['Responsável', 'Aluno']],
                 'palavras' => 'boletim notas medias bimestre ano completo imprimir exportar excel word pdf turma',
                 'passos' => "1. Menu Boletim.\n2. Escolha 'Individual' (um aluno) ou 'Turma' (todos; só a equipe), e 'Por bimestre' ou 'Ano letivo completo'.\n"
-                    . "3. Escolha turma/aluno (a família escolhe o filho), ano e bimestre > Aplicar.\n"
-                    . "4. Exporte em Excel, imprima em Word ou, na turma, gere PDF só das médias ou completo.",
+                    . "3. Escolha turma/aluno, ano e bimestre > Aplicar. Para a família o boletim já abre pronto, no primeiro filho e no bimestre "
+                    . "atual; para ver outro, é só trocar o filho ou o bimestre e tocar em Aplicar.\n"
+                    . "4. Exporte em Excel ou imprima: a família usa 'Imprimir / PDF' (dá pra salvar em PDF na janela de impressão); a equipe "
+                    . "baixa em Word ou, na turma, gera PDF só das médias ou completo.",
             ],
             [
                 'id' => 'relatorio-frequencia', 'area' => 'Pedagógico', 'titulo' => 'Relatório de frequência (mensal/anual, por aluno)',
@@ -210,7 +262,7 @@ final class ManualSistema
                 'id' => 'alunos', 'area' => 'Secretaria', 'titulo' => 'Cadastrar e gerenciar alunos',
                 'menu' => 'Secretaria > Pessoas > Alunos', 'acesso' => ['pode' => ['pessoas.ver', 'pessoas.gerenciar']],
                 'palavras' => 'aluno cadastrar matricular novo aluno inativar transferir ficha foto acesso portal login aluno exportar',
-                'passos' => "Secretaria > Pessoas > aba Alunos.\n- Novo: botão '+' > dados do aluno, turma (o nº de matrícula é sugerido), responsáveis "
+                'passos' => "Secretaria > Pessoas > aba Alunos.\n- Novo: botão 'Novo aluno' no topo (no celular, o '+' flutuante) > dados do aluno, turma (o nº de matrícula é sugerido), responsáveis "
                     . "(pelo menos um; marque o financeiro) > Cadastrar aluno. Em seguida o sistema oferece gerar o contrato do ano.\n"
                     . "- Editar: lápis. Ficha completa: toque no aluno.\n- Inativar: desligue o status e informe o motivo (encerra a matrícula).\n"
                     . "- Acesso do aluno ao portal (login próprio): liberado na ficha do aluno.\n- Exportar para Excel: botão de download nos filtros.",
@@ -219,7 +271,7 @@ final class ManualSistema
                 'id' => 'responsaveis', 'area' => 'Secretaria', 'titulo' => 'Cadastrar responsáveis e vincular aos alunos',
                 'menu' => 'Secretaria > Pessoas > Responsáveis', 'acesso' => ['pode' => ['pessoas.ver', 'pessoas.gerenciar']],
                 'palavras' => 'responsavel pai mae familia cadastrar vincular cpf telefone endereco pendencia cadastro incompleto',
-                'passos' => "Secretaria > Pessoas > aba Responsáveis > '+'. CPF válido, celular e endereço completo são obrigatórios (o responsável é quem "
+                'passos' => "Secretaria > Pessoas > aba Responsáveis > 'Novo responsável' (no celular, '+'). CPF válido, celular e endereço completo são obrigatórios (o responsável é quem "
                     . "recebe boleto e WhatsApp). 'Falta CPF/telefone/endereço' na lista = cadastro incompleto: toque para completar. "
                     . "Vincular alunos: botão '+' na coluna Alunos.",
             ],
@@ -227,14 +279,14 @@ final class ManualSistema
                 'id' => 'equipe', 'area' => 'Secretaria', 'titulo' => 'Professores e equipe (usuários e perfis)',
                 'menu' => 'Secretaria > Pessoas > Professores / Equipe', 'acesso' => ['pode' => ['equipe.gerenciar']],
                 'palavras' => 'professor cadastrar equipe usuario funcionario secretaria perfil senha acesso vincular turma disciplina',
-                'passos' => "Secretaria > Pessoas > aba Professores (ou Equipe) > '+'. Para o professor, vincule turmas e disciplinas (botão '+' na coluna Turmas). "
+                'passos' => "Secretaria > Pessoas > aba Professores (ou Equipe) > 'Novo professor' / 'Novo usuário' (no celular, '+'). Para o professor, vincule turmas e disciplinas (botão '+' na coluna Turmas). "
                     . "Na Equipe, escolha o perfil (Diretoria, Coordenação, Secretaria, Tesouraria...). Desligar o status bloqueia o acesso.",
             ],
             [
                 'id' => 'turmas', 'area' => 'Secretaria', 'titulo' => 'Turmas (criar, enturmar, encerrar)',
                 'menu' => 'Secretaria > Turmas', 'acesso' => ['pode' => ['turmas.gerenciar', 'pedagogico.ver']],
                 'palavras' => 'turma criar nova turma enturmar vincular alunos disciplinas professores encerrar reabrir sala turno capacidade',
-                'passos' => "Secretaria > Turmas > '+' (nome, ano letivo, turno, sala, capacidade). Em cada turma: vincular alunos, disciplinas e professores "
+                'passos' => "Secretaria > Turmas > 'Nova turma' (no celular, '+') (nome, ano letivo, turno, sala, capacidade). Em cada turma: vincular alunos, disciplinas e professores "
                     . "(menu ⋮ no celular), editar, encerrar ou reabrir. Turma encerrada fica só para consulta (chamada, notas e registros travados) até "
                     . "um administrador reabrir. Turmas do ano novo podem ser copiadas em Parametrizações > Ano Letivo > Duplicar turmas.",
             ],
@@ -242,7 +294,7 @@ final class ManualSistema
                 'id' => 'disciplinas', 'area' => 'Secretaria', 'titulo' => 'Disciplinas',
                 'menu' => 'Secretaria > Disciplinas', 'acesso' => ['pode' => ['turmas.gerenciar']],
                 'palavras' => 'disciplina materia componente curricular cadastrar vincular professor',
-                'passos' => "Secretaria > Disciplinas > '+' (Adicionar Disciplina) com nome e descrição. Vincule professores pelo botão de pessoa+. "
+                'passos' => "Secretaria > Disciplinas > 'Nova disciplina' (no celular, '+') com nome e descrição. Vincule professores pelo botão de pessoa+. "
                     . "A disciplina entra na turma em Secretaria > Turmas > vincular disciplinas.",
             ],
             [
@@ -470,8 +522,11 @@ final class ManualSistema
             [
                 'id' => 'logs', 'area' => 'Administração', 'titulo' => 'Logs do sistema (auditoria)',
                 'menu' => 'Administração > Logs do Sistema', 'acesso' => ['pode' => ['logs.ver']],
-                'palavras' => 'log auditoria quem alterou historico acesso sessao exportacao seguranca',
-                'passos' => 'Administração > Logs do Sistema: Visão geral (eventos, usuários, sessões, alterações, logins recusados), Eventos e Sessões; filtre o período e exporte em CSV.',
+                'palavras' => 'log auditoria quem alterou historico acesso sessao exportacao seguranca app instalado celular computador navegador como acessam quantos usam o app',
+                'passos' => 'Administração > Logs do Sistema: Visão geral (eventos, usuários, sessões, alterações, logins recusados), Eventos e Sessões; filtre o período e exporte em CSV.'
+                    . "\nO quadro 'Como acessam' mostra quantas pessoas e sessões usaram o app instalado, o navegador do celular ou o computador no período, "
+                    . "e a divisão por perfil (famílias, professores, equipe). Clicar numa forma de acesso abre os eventos dela; em Eventos há também o filtro 'Acesso'. "
+                    . 'O app instalado só é reconhecido a partir de 29/10/2026; antes disso, o acesso pelo app aparece como navegador no celular.',
             ],
         ];
     }
