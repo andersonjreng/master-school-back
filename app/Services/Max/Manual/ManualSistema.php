@@ -34,6 +34,17 @@ final class ManualSistema
                     . "Quando sair uma versão nova, aparece 'Nova versão disponível' no rodapé: toque em Atualizar.",
             ],
             [
+                'id' => 'busca-rapida', 'area' => 'Geral', 'titulo' => 'Busca rápida no computador (Ctrl+K)',
+                'menu' => 'Campo "Ir para…" no topo da tela, ou as teclas Ctrl+K (⌘K no Mac)', 'acesso' => [],
+                'palavras' => 'busca rapida ctrl k atalho teclado ir para procurar tela turma aluno achar encontrar pesquisar',
+                'passos' => "No computador, aperte Ctrl+K (ou clique em 'Ir para…' no topo) e digite:\n"
+                    . "- o nome de uma tela (ex.: 'recibos', 'rematrícula') para abrir direto;\n"
+                    . "- o nome de uma turma (ex.: '2º ano') para abrir a chamada dela;\n"
+                    . "- o nome ou a matrícula de um aluno para abrir a ficha dele (para quem acessa Pessoas).\n"
+                    . "Use as setas e Enter para escolher, Esc para fechar. A última opção manda o que você digitou como pergunta para o Max. "
+                    . "No celular, a mesma busca de telas fica no 'Ir para...' do Menu.",
+            ],
+            [
                 'id' => 'manter-conectado', 'area' => 'Geral', 'titulo' => 'Continuar conectado no celular (sem digitar a senha toda vez)',
                 'menu' => 'Tela de login > "Manter conectado neste aparelho"', 'acesso' => [],
                 'palavras' => 'manter conectado lembrar login senha toda vez entrar de novo sair desconectou deslogou sessao expirou celular app',
@@ -129,7 +140,8 @@ final class ManualSistema
                 'palavras' => 'chamada frequencia presenca falta lancar marcar justificar justificativa faltou presente sem internet offline wifi conexao guardada',
                 'passos' => "1. Minhas Turmas > no card da turma, toque em Chamada.\n2. Confira a data no topo (troque se for outro dia).\n"
                     . "3. Marque P ou F para cada aluno (ou use 'Presentes'/'Faltantes' para marcar todos).\n"
-                    . "4. Em uma falta, toque no balão ao lado para justificar.\n5. Toque em 'Lançar frequência'.\n"
+                    . "4. Em uma falta, toque no balão ao lado para justificar (no computador, o '+' da coluna Justificativa).\n"
+                    . "5. Toque em 'Lançar frequência' — a barra fixa embaixo mostra quantos P, F e alunos sem marcar.\n"
                     . "Para corrigir depois: abra a mesma data > Editar (ou Excluir). O ícone de calendário mostra os dias já lançados. "
                     . "Se o dia não tiver aula no calendário escolar, o sistema avisa antes de lançar.\n"
                     . "Sem internet na sala: a chamada abre com a lista de alunos da última vez que a turma foi aberta com internet. "
@@ -201,8 +213,10 @@ final class ManualSistema
                 'menu' => 'Boletim', 'acesso' => ['pode' => ['pedagogico.ver'], 'perfis' => ['Responsável', 'Aluno']],
                 'palavras' => 'boletim notas medias bimestre ano completo imprimir exportar excel word pdf turma',
                 'passos' => "1. Menu Boletim.\n2. Escolha 'Individual' (um aluno) ou 'Turma' (todos; só a equipe), e 'Por bimestre' ou 'Ano letivo completo'.\n"
-                    . "3. Escolha turma/aluno (a família escolhe o filho), ano e bimestre > Aplicar.\n"
-                    . "4. Exporte em Excel, imprima em Word ou, na turma, gere PDF só das médias ou completo.",
+                    . "3. Escolha turma/aluno, ano e bimestre > Aplicar. Para a família o boletim já abre pronto, no primeiro filho e no bimestre "
+                    . "atual; para ver outro, é só trocar o filho ou o bimestre e tocar em Aplicar.\n"
+                    . "4. Exporte em Excel ou imprima: a família usa 'Imprimir / PDF' (dá pra salvar em PDF na janela de impressão); a equipe "
+                    . "baixa em Word ou, na turma, gera PDF só das médias ou completo.",
             ],
             [
                 'id' => 'relatorio-frequencia', 'area' => 'Pedagógico', 'titulo' => 'Relatório de frequência (mensal/anual, por aluno)',
@@ -248,7 +262,7 @@ final class ManualSistema
                 'id' => 'alunos', 'area' => 'Secretaria', 'titulo' => 'Cadastrar e gerenciar alunos',
                 'menu' => 'Secretaria > Pessoas > Alunos', 'acesso' => ['pode' => ['pessoas.ver', 'pessoas.gerenciar']],
                 'palavras' => 'aluno cadastrar matricular novo aluno inativar transferir ficha foto acesso portal login aluno exportar',
-                'passos' => "Secretaria > Pessoas > aba Alunos.\n- Novo: botão '+' > dados do aluno, turma (o nº de matrícula é sugerido), responsáveis "
+                'passos' => "Secretaria > Pessoas > aba Alunos.\n- Novo: botão 'Novo aluno' no topo (no celular, o '+' flutuante) > dados do aluno, turma (o nº de matrícula é sugerido), responsáveis "
                     . "(pelo menos um; marque o financeiro) > Cadastrar aluno. Em seguida o sistema oferece gerar o contrato do ano.\n"
                     . "- Editar: lápis. Ficha completa: toque no aluno.\n- Inativar: desligue o status e informe o motivo (encerra a matrícula).\n"
                     . "- Acesso do aluno ao portal (login próprio): liberado na ficha do aluno.\n- Exportar para Excel: botão de download nos filtros.",
@@ -257,7 +271,7 @@ final class ManualSistema
                 'id' => 'responsaveis', 'area' => 'Secretaria', 'titulo' => 'Cadastrar responsáveis e vincular aos alunos',
                 'menu' => 'Secretaria > Pessoas > Responsáveis', 'acesso' => ['pode' => ['pessoas.ver', 'pessoas.gerenciar']],
                 'palavras' => 'responsavel pai mae familia cadastrar vincular cpf telefone endereco pendencia cadastro incompleto',
-                'passos' => "Secretaria > Pessoas > aba Responsáveis > '+'. CPF válido, celular e endereço completo são obrigatórios (o responsável é quem "
+                'passos' => "Secretaria > Pessoas > aba Responsáveis > 'Novo responsável' (no celular, '+'). CPF válido, celular e endereço completo são obrigatórios (o responsável é quem "
                     . "recebe boleto e WhatsApp). 'Falta CPF/telefone/endereço' na lista = cadastro incompleto: toque para completar. "
                     . "Vincular alunos: botão '+' na coluna Alunos.",
             ],
@@ -265,14 +279,14 @@ final class ManualSistema
                 'id' => 'equipe', 'area' => 'Secretaria', 'titulo' => 'Professores e equipe (usuários e perfis)',
                 'menu' => 'Secretaria > Pessoas > Professores / Equipe', 'acesso' => ['pode' => ['equipe.gerenciar']],
                 'palavras' => 'professor cadastrar equipe usuario funcionario secretaria perfil senha acesso vincular turma disciplina',
-                'passos' => "Secretaria > Pessoas > aba Professores (ou Equipe) > '+'. Para o professor, vincule turmas e disciplinas (botão '+' na coluna Turmas). "
+                'passos' => "Secretaria > Pessoas > aba Professores (ou Equipe) > 'Novo professor' / 'Novo usuário' (no celular, '+'). Para o professor, vincule turmas e disciplinas (botão '+' na coluna Turmas). "
                     . "Na Equipe, escolha o perfil (Diretoria, Coordenação, Secretaria, Tesouraria...). Desligar o status bloqueia o acesso.",
             ],
             [
                 'id' => 'turmas', 'area' => 'Secretaria', 'titulo' => 'Turmas (criar, enturmar, encerrar)',
                 'menu' => 'Secretaria > Turmas', 'acesso' => ['pode' => ['turmas.gerenciar', 'pedagogico.ver']],
                 'palavras' => 'turma criar nova turma enturmar vincular alunos disciplinas professores encerrar reabrir sala turno capacidade',
-                'passos' => "Secretaria > Turmas > '+' (nome, ano letivo, turno, sala, capacidade). Em cada turma: vincular alunos, disciplinas e professores "
+                'passos' => "Secretaria > Turmas > 'Nova turma' (no celular, '+') (nome, ano letivo, turno, sala, capacidade). Em cada turma: vincular alunos, disciplinas e professores "
                     . "(menu ⋮ no celular), editar, encerrar ou reabrir. Turma encerrada fica só para consulta (chamada, notas e registros travados) até "
                     . "um administrador reabrir. Turmas do ano novo podem ser copiadas em Parametrizações > Ano Letivo > Duplicar turmas.",
             ],
@@ -280,7 +294,7 @@ final class ManualSistema
                 'id' => 'disciplinas', 'area' => 'Secretaria', 'titulo' => 'Disciplinas',
                 'menu' => 'Secretaria > Disciplinas', 'acesso' => ['pode' => ['turmas.gerenciar']],
                 'palavras' => 'disciplina materia componente curricular cadastrar vincular professor',
-                'passos' => "Secretaria > Disciplinas > '+' (Adicionar Disciplina) com nome e descrição. Vincule professores pelo botão de pessoa+. "
+                'passos' => "Secretaria > Disciplinas > 'Nova disciplina' (no celular, '+') com nome e descrição. Vincule professores pelo botão de pessoa+. "
                     . "A disciplina entra na turma em Secretaria > Turmas > vincular disciplinas.",
             ],
             [
