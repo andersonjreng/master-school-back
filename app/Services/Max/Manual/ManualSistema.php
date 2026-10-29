@@ -29,12 +29,27 @@ final class ManualSistema
                 'passos' => "O MasterSchool funciona como aplicativo, sem precisar de loja.\n"
                     . "- Android (Chrome): entre no endereço da escola e toque em 'Instalar' no aviso que aparece no rodapé; ou menu ⋮ do Chrome > 'Instalar app'.\n"
                     . "- iPhone (Safari): toque em Compartilhar (quadrado com seta) > 'Adicionar à Tela de Início'.\n"
+                    . "- Já pelo navegador do celular: Menu (barra de baixo) > 'Instalar app', quando o celular oferecer.\n"
                     . "- Computador: botão de download no topo da tela, ao lado do sino.\n"
                     . "Quando sair uma versão nova, aparece 'Nova versão disponível' no rodapé: toque em Atualizar.",
             ],
             [
+                'id' => 'navegacao-celular', 'area' => 'Geral', 'titulo' => 'Como navegar pelo celular (barra de baixo e Menu)',
+                'menu' => 'Barra de botões no rodapé da tela do celular', 'acesso' => [],
+                'palavras' => 'celular menu barra de baixo abas rodape navegar onde fica tela cheia botoes inicio voltar sair perfil buscar ir para app',
+                'passos' => "No celular o menu lateral dá lugar a uma barra fixa no rodapé, como nos aplicativos:\n"
+                    . "- Início, as duas telas mais usadas pelo seu perfil, o Max no centro e Menu. Professor: Turmas e Diário. Família: Boletim e Pagar. "
+                    . "Equipe: Pessoas e Finanças (ou as telas que o seu perfil acessa).\n"
+                    . "- Menu abre todas as telas em botões grandes, separados por seção. O campo 'Ir para...' filtra pelo nome; o 'Ir' do teclado abre a primeira. "
+                    . "Telas com o ícone de computador funcionam melhor no computador.\n"
+                    . "- No fim do Menu ficam os ajustes: modo escuro, avisos no aparelho, instalar app e Sair.\n"
+                    . "- Comunicação: pelo sino no topo ou pelo Menu.\n"
+                    . "- O botão 'voltar' do Android fecha o Menu e o Max sem sair da tela. Tocar na aba em que você já está volta ao topo.\n"
+                    . "- Ao rolar a tela a barra encolhe; ela some enquanto o teclado está aberto e nas telas com botão de salvar fixo (chamada, notas).",
+            ],
+            [
                 'id' => 'push', 'area' => 'Geral', 'titulo' => 'Receber avisos no celular (notificações push)',
-                'menu' => 'Aviso "Receba os avisos da escola" no rodapé, ou Sino > "Avisos neste aparelho"', 'acesso' => [],
+                'menu' => 'Aviso "Receba os avisos da escola" no rodapé, Sino > "Avisos neste aparelho" ou, no celular, Menu > Ajustes > Avisos', 'acesso' => [],
                 'palavras' => 'push notificacao celular aviso app fechado receber avisos ativar desativar desligar bloqueado tela de bloqueio',
                 'passos' => "Os avisos do sino (nota lançada, avaliação marcada, falta, boleto, comunicado, recado, ocorrência, rematrícula) também chegam na tela do "
                     . "celular, mesmo com o app fechado.\n1. Toque em 'Ativar' no aviso 'Receba os avisos da escola' (rodapé) — ou abra o Sino e toque em "
@@ -53,16 +68,17 @@ final class ManualSistema
             ],
             [
                 'id' => 'tema', 'area' => 'Geral', 'titulo' => 'Modo escuro',
-                'menu' => 'Botão de lua/sol no topo da tela', 'acesso' => [],
+                'menu' => 'Botão de lua/sol no topo da tela (no celular: Menu > Ajustes)', 'acesso' => [],
                 'palavras' => 'tema escuro claro noturno dark cor',
-                'passos' => 'Toque no botão de lua (ou sol) no topo para alternar entre o modo claro e o escuro. A escolha fica salva no aparelho.',
+                'passos' => 'Toque no botão de lua (ou sol) no topo para alternar entre o modo claro e o escuro. No celular fica no Menu (barra de baixo) > Ajustes > Modo escuro. A escolha fica salva no aparelho.',
             ],
             [
                 'id' => 'max', 'area' => 'Geral', 'titulo' => 'Max — o assistente do sistema',
-                'menu' => 'Max (menu) ou o botão redondo do Max no canto da tela', 'acesso' => [],
+                'menu' => 'Max (menu) ou o botão redondo do Max no canto da tela (no celular, o botão do centro da barra de baixo)', 'acesso' => [],
                 'palavras' => 'max assistente ia inteligencia artificial chat pergunta conversa historico limite mensagens',
                 'passos' => "O Max responde dúvidas sobre o sistema e consulta dados conforme o seu perfil. Abra pelo menu 'Max' (tela cheia, com histórico "
-                    . "de conversas no botão ☰) ou pelo botão redondo no canto. Há um limite de mensagens por mês, mostrado no topo da conversa.",
+                    . "de conversas no botão ☰) ou pelo botão redondo no canto. No celular o Max é o botão do centro da barra de baixo: abre em tela cheia "
+                    . "por cima da tela atual, e o número nele indica pendências que o Max encontrou. Há um limite de mensagens por mês, mostrado no topo da conversa.",
             ],
             [
                 'id' => 'home', 'area' => 'Geral', 'titulo' => 'Tela inicial (Home)',
