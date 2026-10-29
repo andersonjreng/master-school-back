@@ -45,7 +45,11 @@ final class ManualSistema
                     . "- No fim do Menu ficam os ajustes: modo escuro, avisos no aparelho, instalar app e Sair.\n"
                     . "- Comunicação: pelo sino no topo ou pelo Menu.\n"
                     . "- O botão 'voltar' do Android fecha o Menu e o Max sem sair da tela. Tocar na aba em que você já está volta ao topo.\n"
-                    . "- Ao rolar a tela a barra encolhe; ela some enquanto o teclado está aberto e nas telas com botão de salvar fixo (chamada, notas).",
+                    . "- Ao rolar a tela a barra encolhe; ela some enquanto o teclado está aberto e nas telas com botão de salvar fixo (chamada, notas).\n"
+                    . "- A tela inicial do celular põe primeiro o que se usa no dia: o professor vê a aula em andamento em destaque, com 'Chamada' e "
+                    . "'Registro' a um toque; a família vê o filho escolhido, a mensalidade em atraso ou perto de vencer (botão 'Pagar com Pix ou boleto', "
+                    . "que já abre o pagamento) e a aula de agora; a direção vê 'Precisa de você' logo depois do resumo. Os números deslizam para o lado "
+                    . "e os gráficos ficam no fim.",
             ],
             [
                 'id' => 'push', 'area' => 'Geral', 'titulo' => 'Receber avisos no celular (notificações push)',
