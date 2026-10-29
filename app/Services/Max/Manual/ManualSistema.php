@@ -126,12 +126,16 @@ final class ManualSistema
             [
                 'id' => 'chamada', 'area' => 'Pedagógico', 'titulo' => 'Fazer a chamada (lançar frequência)',
                 'menu' => 'Minhas Turmas > card da turma > Chamada', 'acesso' => ['professor' => true, 'pode' => ['pedagogico.editar']],
-                'palavras' => 'chamada frequencia presenca falta lancar marcar justificar justificativa faltou presente',
+                'palavras' => 'chamada frequencia presenca falta lancar marcar justificar justificativa faltou presente sem internet offline wifi conexao guardada',
                 'passos' => "1. Minhas Turmas > no card da turma, toque em Chamada.\n2. Confira a data no topo (troque se for outro dia).\n"
                     . "3. Marque P ou F para cada aluno (ou use 'Presentes'/'Faltantes' para marcar todos).\n"
                     . "4. Em uma falta, toque no balão ao lado para justificar.\n5. Toque em 'Lançar frequência'.\n"
                     . "Para corrigir depois: abra a mesma data > Editar (ou Excluir). O ícone de calendário mostra os dias já lançados. "
-                    . "Se o dia não tiver aula no calendário escolar, o sistema avisa antes de lançar.",
+                    . "Se o dia não tiver aula no calendário escolar, o sistema avisa antes de lançar.\n"
+                    . "Sem internet na sala: a chamada abre com a lista de alunos da última vez que a turma foi aberta com internet. "
+                    . "Ao tocar em 'Lançar frequência', ela fica guardada no aparelho ('Guardada no aparelho') e é enviada sozinha quando a "
+                    . "conexão voltar — aparece 'Chamada enviada' no topo. Não feche a sessão (Sair) antes do envio. Se a escola recusar "
+                    . "(ex.: dia bloqueado), aparece um aviso vermelho no topo; toque nele para abrir a chamada e lançar de novo.",
             ],
             [
                 'id' => 'registro-aula', 'area' => 'Pedagógico', 'titulo' => 'Registrar a aula dada (conteúdo)',
