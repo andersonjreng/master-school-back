@@ -150,13 +150,18 @@ class FinanceiroHelperService
                 str_replace(['dinheiro', 'pix', 'transferencia', 'boleto'], ['Dinheiro', 'Pix', 'Transferência', 'Boleto'], $formaPagamento)
             );
 
-            // Número sequencial (contagem + 1). Duas baixas ao mesmo tempo (ex.: dois
-            // pagamentos chegando do Asaas juntos) podem calcular o mesmo número —
-            // o UNIQUE de numero_recibo recusa a segunda, que tenta o seguinte.
+            // Número sequencial do ano: o maior já usado + 1. (Contagem + 1 colidia quando
+            // havia buracos — recibo apagado, numeração vinda do legado — e a baixa falhava.)
+            // Duas baixas ao mesmo tempo (ex.: dois pagamentos chegando do Asaas juntos)
+            // podem calcular o mesmo número — o UNIQUE de numero_recibo recusa a segunda,
+            // que tenta o seguinte.
+            $prefixo = 'REC-' . date('Y') . '-';
+            $ultimo = (int) DB::table('recibos')->where('numero_recibo', 'like', $prefixo . '%')
+                ->max(DB::raw('CAST(SUBSTRING(numero_recibo, ' . (strlen($prefixo) + 1) . ') AS UNSIGNED)'));
             $tentativa = 0;
             while (true) {
-                $seq = str_pad((int) DB::table('recibos')->count() + 1 + $tentativa, 5, '0', STR_PAD_LEFT);
-                $numeroRecibo = 'REC-' . date('Y') . "-$seq";
+                $seq = str_pad($ultimo + 1 + $tentativa, 5, '0', STR_PAD_LEFT);
+                $numeroRecibo = $prefixo . $seq;
                 try {
                     $reciboId = DB::table('recibos')->insertGetId([
                         'numero_recibo' => $numeroRecibo,
