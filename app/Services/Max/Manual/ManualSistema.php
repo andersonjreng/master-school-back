@@ -492,8 +492,11 @@ final class ManualSistema
             [
                 'id' => 'logs', 'area' => 'Administração', 'titulo' => 'Logs do sistema (auditoria)',
                 'menu' => 'Administração > Logs do Sistema', 'acesso' => ['pode' => ['logs.ver']],
-                'palavras' => 'log auditoria quem alterou historico acesso sessao exportacao seguranca',
-                'passos' => 'Administração > Logs do Sistema: Visão geral (eventos, usuários, sessões, alterações, logins recusados), Eventos e Sessões; filtre o período e exporte em CSV.',
+                'palavras' => 'log auditoria quem alterou historico acesso sessao exportacao seguranca app instalado celular computador navegador como acessam quantos usam o app',
+                'passos' => 'Administração > Logs do Sistema: Visão geral (eventos, usuários, sessões, alterações, logins recusados), Eventos e Sessões; filtre o período e exporte em CSV.'
+                    . "\nO quadro 'Como acessam' mostra quantas pessoas e sessões usaram o app instalado, o navegador do celular ou o computador no período, "
+                    . "e a divisão por perfil (famílias, professores, equipe). Clicar numa forma de acesso abre os eventos dela; em Eventos há também o filtro 'Acesso'. "
+                    . 'O app instalado só é reconhecido a partir de 29/10/2026; antes disso, o acesso pelo app aparece como navegador no celular.',
             ],
         ];
     }

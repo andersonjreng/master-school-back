@@ -58,18 +58,48 @@ class LogSistemaService
             'tela'       => self::limpar($tela ?? $request->header('X-Tela'), 255),
             'user_agent' => self::limpar($request->userAgent(), 255),
         ];
+        $acesso = [
+            'origem'      => self::origem($request),
+            'dispositivo' => self::dispositivo($request->userAgent()),
+        ];
 
-        // Auditoria nunca pode derrubar a operação do usuário. Se a migration
-        // 2026_10_22 ainda não rodou neste banco, grava só as colunas antigas.
-        try {
-            DB::table('logs_sistema')->insert($linha + $novas);
-        } catch (\Throwable $e) {
+        // Auditoria nunca pode derrubar a operação do usuário. Se as
+        // migrations 2026_10_29 / 2026_10_22 ainda não rodaram neste banco,
+        // grava só as colunas que existem.
+        foreach ([$linha + $novas + $acesso, $linha + $novas, $linha] as $tentativa) {
             try {
-                DB::table('logs_sistema')->insert($linha);
-            } catch (\Throwable $e2) {
-                Log::warning('Falha ao gravar logs_sistema: ' . $e2->getMessage(), ['acao' => $acao]);
+                DB::table('logs_sistema')->insert($tentativa);
+
+                return;
+            } catch (\Throwable $e) {
+                $erro = $e;
             }
         }
+        Log::warning('Falha ao gravar logs_sistema: ' . $erro->getMessage(), ['acao' => $acao]);
+    }
+
+    /** "app" (instalado no aparelho) ou "web" (navegador), pelo header X-Origem do front. */
+    public static function origem(Request $request): ?string
+    {
+        $origem = strtolower((string) $request->header('X-Origem'));
+
+        return in_array($origem, ['app', 'web'], true) ? $origem : null;
+    }
+
+    /** celular, tablet ou computador, pelo navegador (a migration 2026_10_29 usa a mesma regra). */
+    public static function dispositivo(?string $userAgent): ?string
+    {
+        if (!$userAgent) {
+            return null;
+        }
+        if (str_contains($userAgent, 'iPad') || (str_contains($userAgent, 'Android') && !str_contains($userAgent, 'Mobile'))) {
+            return 'tablet';
+        }
+        if (str_contains($userAgent, 'Mobi') || str_contains($userAgent, 'iPhone') || str_contains($userAgent, 'Android')) {
+            return 'celular';
+        }
+
+        return 'computador';
     }
 
     public static function ip(Request $request): string
