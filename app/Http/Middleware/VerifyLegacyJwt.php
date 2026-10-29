@@ -2,7 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Controllers\Api\AuthController;
 use Closure;
+use Illuminate\Support\Facades\DB;
 use Firebase\JWT\ExpiredException;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
@@ -33,6 +35,15 @@ class VerifyLegacyJwt
             return response()->json(['error' => 'Token inválido'], 401);
         } catch (\Exception) {
             return response()->json(['error' => 'Token inválido'], 401);
+        }
+
+        // "Manter conectado" (token de 30 dias): vale só enquanto o usuário
+        // está ativo e com a mesma senha — trocar a senha desconecta os aparelhos.
+        if (!empty($decoded->lg)) {
+            $senha = DB::table('usuarios')->where('id', $decoded->id ?? 0)->where('ativo', 1)->value('senha');
+            if ($senha === null || AuthController::marcaSenha($senha) !== ($decoded->sv ?? '')) {
+                return response()->json(['error' => 'Sessão encerrada. Entre novamente.', 'codigo' => 'sessao_encerrada'], 401);
+            }
         }
 
         $request->attributes->set('max_jwt_token', $matches[1]);

@@ -45,6 +45,7 @@ use Illuminate\Support\Facades\Route;
 
 // Equivalente a api/auth/login.php — sem middleware, é o próprio ponto de entrada.
 Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/renovar', [AuthController::class, 'renovar'])->middleware('max.jwt');
 Route::get('/auth/permissoes', [AuthController::class, 'permissoes'])->middleware('max.jwt');
 
 // Acesso por permissão (max.pode:...), não por perfil: o padrão de cada

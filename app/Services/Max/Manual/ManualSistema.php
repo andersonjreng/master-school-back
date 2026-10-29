@@ -34,6 +34,17 @@ final class ManualSistema
                     . "Quando sair uma versão nova, aparece 'Nova versão disponível' no rodapé: toque em Atualizar.",
             ],
             [
+                'id' => 'manter-conectado', 'area' => 'Geral', 'titulo' => 'Continuar conectado no celular (sem digitar a senha toda vez)',
+                'menu' => 'Tela de login > "Manter conectado neste aparelho"', 'acesso' => [],
+                'palavras' => 'manter conectado lembrar login senha toda vez entrar de novo sair desconectou deslogou sessao expirou celular app',
+                'passos' => "Na tela de login, deixe marcado 'Manter conectado neste aparelho' (no celular e no app já vem marcado; no computador, "
+                    . "marque só se o computador for seu).\n"
+                    . "- Assim o app abre direto, sem pedir a senha, enquanto você usar ao menos uma vez por mês.\n"
+                    . "- Para desconectar: Menu > Sair (no computador, no seu nome no topo > Sair).\n"
+                    . "- Trocar a senha ou ter o acesso desativado pela escola desconecta todos os aparelhos.\n"
+                    . "Sem a opção marcada, a sessão vale até fechar o navegador (no máximo 24 horas).",
+            ],
+            [
                 'id' => 'navegacao-celular', 'area' => 'Geral', 'titulo' => 'Como navegar pelo celular (barra de baixo e Menu)',
                 'menu' => 'Barra de botões no rodapé da tela do celular', 'acesso' => [],
                 'palavras' => 'celular menu barra de baixo abas rodape navegar onde fica tela cheia botoes inicio voltar sair perfil buscar ir para app adicionar novo cadastrar botao mais +',
