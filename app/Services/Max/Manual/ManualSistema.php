@@ -51,7 +51,7 @@ final class ManualSistema
                     . "- A tela inicial do celular põe primeiro o que se usa no dia: o professor vê a aula em andamento em destaque, com 'Chamada' e "
                     . "'Registro' a um toque; a família vê o filho escolhido, a mensalidade em atraso ou perto de vencer (botão 'Pagar com Pix ou boleto', "
                     . "que já abre o pagamento) e a aula de agora; a direção vê 'Precisa de você' logo depois do resumo. Os números deslizam para o lado "
-                    . "e os gráficos ficam no fim.",
+                    . "e os gráficos ficam no fim. Para ver outro ano letivo (ou atualizar os números), a direção toca no chip com o ano, no canto do topo.",
             ],
             [
                 'id' => 'push', 'area' => 'Geral', 'titulo' => 'Receber avisos no celular (notificações push)',
