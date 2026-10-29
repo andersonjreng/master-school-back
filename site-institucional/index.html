@@ -246,6 +246,9 @@ h2 em{font-style:normal;background:linear-gradient(92deg,var(--cyan-2),#5a5bff);
 
 /* ---------- Max ---------- */
 .dark{background:var(--ink);color:#e9f1ff}
+.xp{background:radial-gradient(70% 50% at 80% 30%,rgba(26,209,255,.08),transparent 70%),var(--ink-2)}
+#xpPalco{min-height:720px}
+@media (max-width:640px){#xpPalco{min-height:0}}
 .max-sec{overflow:hidden}
 .max-sec::before{content:"";position:absolute;width:900px;height:900px;left:50%;top:40%;translate:-50% -50%;background:radial-gradient(circle,rgba(26,209,255,.18),transparent 60%);pointer-events:none}
 .max-grid{display:grid;grid-template-columns:.95fr 1.05fr;gap:60px;align-items:center;position:relative}
@@ -475,6 +478,7 @@ footer .sp{margin-left:auto}
       <li><a href="#produto">Produto</a></li>
       <li><a href="#max">Max IA</a></li>
       <li><a href="#perfis">Para quem</a></li>
+      <li><a href="#experimente">Experimente</a></li>
       <li><a href="#como">Como funciona</a></li>
       <li><a href="#faq">Dúvidas</a></li>
     </ul>
@@ -668,6 +672,21 @@ footer .sp{margin-left:auto}
         </div>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ================= EXPERIMENTE (demonstração interativa) ================= -->
+<section class="dark pad xp" id="experimente">
+  <div class="wrap">
+    <span class="kicker rv">Experimente agora</span>
+    <h2 class="words" data-split>Não precisa imaginar. <em>Toque e veja.</em></h2>
+    <p class="sub rv">Faça a chamada como professor, pague a mensalidade como família ou veja a escola como a direção. Tudo aqui mesmo, sem cadastro.</p>
+    <div class="xp-modos" role="tablist" aria-label="Onde experimentar">
+      <button role="tab" data-modo="cel" aria-selected="true">📱 No celular</button>
+      <button role="tab" data-modo="pc" aria-selected="false">💻 No computador</button>
+    </div>
+    <div id="xpPalco" class="xp-palco" aria-live="polite"></div>
+    <noscript><p class="sub">Ative o JavaScript para experimentar a demonstração.</p></noscript>
   </div>
 </section>
 
@@ -1296,6 +1315,23 @@ function confete(){
 }
 
 onScroll();
+</script>
+<script>
+// Demonstração interativa (seção Experimente): CSS e JS só carregam quando a seção se aproxima.
+(() => {
+  const s = document.getElementById('experimente');
+  if (!s) return;
+  const v = '1';
+  new IntersectionObserver(([e], o) => {
+    if (!e.isIntersecting) return;
+    o.disconnect();
+    const l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = 'site-assets/demo/demo.css?v=' + v;
+    l.onload = () => { const j = document.createElement('script'); j.src = 'site-assets/demo/demo.js?v=' + v; document.body.appendChild(j); };
+    document.head.appendChild(l);
+  }, { rootMargin: '900px 0px' }).observe(s);
+})();
 </script>
 </body>
 </html>
