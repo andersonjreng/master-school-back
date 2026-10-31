@@ -556,3 +556,14 @@ Route::prefix('contato-escola')->group(function () {
     Route::post('/', [ContatoEscolaController::class, 'store'])->middleware('throttle:5,1');
     Route::get('/exportar', [ContatoEscolaController::class, 'exportar'])->middleware('throttle:10,1');
 });
+
+// Atendimentos (Comunicação > Atendimentos): equipe abre horários, família marca (regras em AtendimentoService).
+Route::prefix('atendimentos')->middleware('max.jwt')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Api\AtendimentoController::class, 'inicio']);
+    Route::get('/livres/{atendenteId}', [\App\Http\Controllers\Api\AtendimentoController::class, 'livres'])->whereNumber('atendenteId');
+    Route::post('/', [\App\Http\Controllers\Api\AtendimentoController::class, 'marcar']);
+    Route::post('/{id}/cancelar', [\App\Http\Controllers\Api\AtendimentoController::class, 'cancelar'])->whereNumber('id');
+    Route::post('/{id}/concluir', [\App\Http\Controllers\Api\AtendimentoController::class, 'concluir'])->whereNumber('id');
+    Route::post('/horarios', [\App\Http\Controllers\Api\AtendimentoController::class, 'abrirHorarios']);
+    Route::delete('/horarios/{id}', [\App\Http\Controllers\Api\AtendimentoController::class, 'fecharHorario'])->whereNumber('id');
+});

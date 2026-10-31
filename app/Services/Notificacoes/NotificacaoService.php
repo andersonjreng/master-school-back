@@ -375,7 +375,7 @@ class NotificacaoService
      */
     private function vaiProPush(string $chave): bool
     {
-        foreach (['nota:', 'avaliacao:', 'avaliacao_amanha:', 'falta:', 'boleto:', 'plano:', 'rematricula:'] as $prefixo) {
+        foreach (['nota:', 'avaliacao:', 'avaliacao_amanha:', 'falta:', 'boleto:', 'plano:', 'rematricula:', 'atendimento:'] as $prefixo) {
             if (str_starts_with($chave, $prefixo)) {
                 return true;
             }

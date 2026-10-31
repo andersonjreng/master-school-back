@@ -247,6 +247,20 @@ final class ManualSistema
                     . "todos e o aviso chega no celular.\nFamília: lê, reage, vota nas enquetes e toca em 'Confirmar leitura' quando pedido (não comenta).",
             ],
             [
+                'id' => 'atendimentos', 'area' => 'Comunicação', 'titulo' => 'Atendimentos: a família marca horário com professor ou coordenação',
+                'menu' => 'Comunicação > Atendimentos', 'acesso' => [],
+                'palavras' => 'atendimento agendar reuniao marcar horario conversar com a professora coordenacao direcao secretaria reuniao de pais individual online presencial meet link cancelar desmarcar horarios de atendimento disponibilidade',
+                'passos' => "Família: Comunicação > Atendimentos > 'Marcar um atendimento'. Escolha o filho (se tiver mais de um) e com quem: os professores "
+                    . "dele e a coordenação/direção/secretaria que abriram horários (cada um mostra o próximo horário livre). Escolha o dia e o horário, "
+                    . "'Na escola' ou 'Online' (quando a pessoa atende dos dois jeitos), escreva o assunto > Marcar. Dá para marcar até 2 horas antes, um "
+                    . "atendimento por vez com cada pessoa. Em 'Meus atendimentos' ficam os marcados (com 'Entrar na chamada' quando é online) e o 'x' "
+                    . "cancela.\nEquipe: Comunicação > Atendimentos > 'Abrir horários' — marque os dias no calendário, das que horas às que horas, a "
+                    . "duração de cada atendimento (15 a 60 min), na escola, online ou os dois, e o local ou o link da chamada. Em 'Meus horários' os "
+                    . "blocos mostram o que está livre e o que já foi marcado; a lixeira fecha o horário (quem já tinha marcado recebe o aviso de "
+                    . "cancelamento). 'Próximos atendimentos' mostra a família, o aluno, o assunto e o WhatsApp do responsável; depois do horário, "
+                    . "'Feito' marca como realizado. Marcar e cancelar avisam o outro lado no sino e no celular.",
+            ],
+            [
                 'id' => 'recados', 'area' => 'Comunicação', 'titulo' => 'Recados (conversa privada escola ↔ família)',
                 'menu' => 'Comunicação > Recados', 'acesso' => [],
                 'palavras' => 'recado mensagem conversa falar com professor professora secretaria familia chat privado contato escola mandar mensagem duvida',
