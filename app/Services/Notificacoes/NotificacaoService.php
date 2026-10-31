@@ -170,6 +170,30 @@ class NotificacaoService
         });
     }
 
+    /**
+     * Agenda da Educação Infantil enviada: uma notificação por criança, com o
+     * resumo do dia (ex.: "Almoço: comeu tudo · Sono: dormiu bem").
+     *
+     * @param array<int, string> $resumos aluno_id => resumo
+     */
+    public function agendaEnviada(string $data, array $resumos): void
+    {
+        $this->seguro(function () use ($data, $resumos) {
+            $dest = $this->destinatarios(array_keys($resumos));
+            $hoje = $data === now()->toDateString();
+            foreach ($resumos as $alunoId => $resumo) {
+                $aluno = $dest['nomes'][$alunoId] ?? null;
+                if (!$aluno) {
+                    continue;
+                }
+                $this->gravar($dest['usuarios'][$alunoId] ?? [], 'agenda', "agenda:$alunoId:$data", (int) $alunoId,
+                    $hoje ? "Chegou a agenda de hoje de $aluno" : "Agenda de $aluno de " . Carbon::parse($data)->format('d/m'),
+                    $resumo !== '' ? $resumo : null,
+                    '/agenda', ['aluno' => (int) $alunoId, 'data' => $data], reabrir: false);
+            }
+        });
+    }
+
     // ── Na hora de ler: o que depende do relógio ou de uma situação ─────────
 
     /**
@@ -375,7 +399,7 @@ class NotificacaoService
      */
     private function vaiProPush(string $chave): bool
     {
-        foreach (['nota:', 'avaliacao:', 'avaliacao_amanha:', 'falta:', 'boleto:', 'plano:', 'rematricula:'] as $prefixo) {
+        foreach (['nota:', 'avaliacao:', 'avaliacao_amanha:', 'falta:', 'boleto:', 'plano:', 'rematricula:', 'agenda:'] as $prefixo) {
             if (str_starts_with($chave, $prefixo)) {
                 return true;
             }

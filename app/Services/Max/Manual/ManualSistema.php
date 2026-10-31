@@ -60,7 +60,7 @@ final class ManualSistema
                 'menu' => 'Barra de botões no rodapé da tela do celular', 'acesso' => [],
                 'palavras' => 'celular menu barra de baixo abas rodape navegar atualizar recarregar puxar onde fica tela cheia botoes inicio voltar sair perfil buscar ir para app adicionar novo cadastrar botao mais +',
                 'passos' => "No celular o menu lateral dá lugar a uma barra fixa no rodapé, como nos aplicativos:\n"
-                    . "- Início, as duas telas mais usadas pelo seu perfil, o Max no centro e Menu. Professor: Turmas e Diário. Família: Boletim e Pagar. "
+                    . "- Início, as duas telas mais usadas pelo seu perfil, o Max no centro e Menu. Professor: Turmas e Diário (na Educação Infantil, Turmas e Agenda). Família: Boletim e Pagar (com filho na Educação Infantil, Agenda e Boletim). "
                     . "Equipe: Pessoas e Finanças (ou as telas que o seu perfil acessa).\n"
                     . "- Menu abre todas as telas em botões grandes, separados por seção. O campo 'Ir para...' filtra pelo nome; o 'Ir' do teclado abre a primeira. "
                     . "Telas com o ícone de computador funcionam melhor no computador.\n"
@@ -80,7 +80,7 @@ final class ManualSistema
                 'id' => 'push', 'area' => 'Geral', 'titulo' => 'Receber avisos no celular (notificações push)',
                 'menu' => 'Aviso "Receba os avisos da escola" no rodapé, Sino > "Avisos neste aparelho" ou, no celular, Menu > Ajustes > Avisos', 'acesso' => [],
                 'palavras' => 'push notificacao celular aviso app fechado receber avisos ativar desativar desligar bloqueado tela de bloqueio',
-                'passos' => "Os avisos do sino (nota lançada, avaliação marcada, falta, boleto, comunicado, recado, ocorrência, rematrícula) também chegam na tela do "
+                'passos' => "Os avisos do sino (nota lançada, avaliação marcada, falta, boleto, comunicado, recado, ocorrência, rematrícula, agenda do dia da Educação Infantil) também chegam na tela do "
                     . "celular, mesmo com o app fechado.\n1. Toque em 'Ativar' no aviso 'Receba os avisos da escola' (rodapé) — ou abra o Sino e toque em "
                     . "'Ativar' em 'Avisos neste aparelho'.\n2. Permita as notificações quando o celular perguntar. Chega um aviso de teste.\n"
                     . "- No iPhone, primeiro instale o app na tela de início (iOS 16.4 ou mais novo); no Android funciona também pelo Chrome.\n"
@@ -91,7 +91,7 @@ final class ManualSistema
                 'id' => 'sino', 'area' => 'Geral', 'titulo' => 'Notificações (sino)',
                 'menu' => 'Sino no topo da tela', 'acesso' => [],
                 'palavras' => 'notificacao aviso sino alerta lido nao lido novidade',
-                'passos' => "O sino mostra o que é novo para você: notas lançadas, avaliações marcadas, faltas, boletos, comunicados, recados e "
+                'passos' => "O sino mostra o que é novo para você: notas lançadas, avaliações marcadas, faltas, boletos, agenda do dia (Educação Infantil), comunicados, recados e "
                     . "ocorrências (família); e pendências da equipe conforme o perfil (chamadas atrasadas, notas pendentes, cadastros incompletos, "
                     . "planejamentos para aprovar, pagamentos). Toque num aviso para ir direto à tela. 'Marcar como lidas' limpa o contador.",
             ],
@@ -188,6 +188,24 @@ final class ManualSistema
                 'palavras' => 'bncc educacao infantil habilidades semestre relatorio campos de experiencia avaliacao infantil',
                 'passos' => "Nas turmas de Educação Infantil a avaliação é por habilidades da BNCC: Minhas Turmas > Relatório BNCC > escolha o semestre e o aluno "
                     . "> marque o nível de cada habilidade (com observação) > Salvar.",
+            ],
+            [
+                'id' => 'agenda-infantil', 'area' => 'Pedagógico', 'titulo' => 'Agenda do dia da Educação Infantil (rotina para a família)',
+                'menu' => 'Agenda (menu principal; no celular, aba Agenda)', 'acesso' => ['professor' => true, 'pode' => ['pedagogico.ver'], 'perfis' => ['Responsável']],
+                'palavras' => 'agenda agenda digital rotina diario da crianca bebe educacao infantil berçario maternal lanche almoco comeu sono dormiu fralda evacuacao humor recado professora enviar agenda familia ver como foi o dia itens da agenda',
+                'passos' => "Só aparece para turmas de Educação Infantil (Berçário, Maternal, Períodos...) e para as famílias dessas crianças.\n"
+                    . "Professora: 1. Agenda > escolha a turma e o dia (setas; hoje por padrão). 2. 'Para a turma toda': toque na resposta de cada item "
+                    . "(Lanche, Almoço, Sono, Humor...) — vale para todas as crianças; tocar de novo desmarca. Contadores (ex.: trocas de fralda) usam − e +. "
+                    . "'O dia da turma' é o recado para todos. 3. Toque numa criança só para o que foi diferente com ela: a escolha vira 'Só fulana' (anel "
+                    . "roxo; o 'x' volta ao da turma) e há o 'Recado para a família'. 'Anterior/Próxima' passa de criança em criança; alergias e cuidados "
+                    . "de saúde do cadastro aparecem no topo. 4. Tudo salva na hora; 'Enviar às famílias' avisa no app (sino e celular) com o resumo do dia. "
+                    . "Quem tem falta na chamada daquele dia fica de fora. Depois de enviada, correções aparecem para a família na hora, sem novo aviso; o "
+                    . "olho mostra quantas famílias já viram.\n"
+                    . "Família: Agenda > o dia do filho com a resposta de cada item, o recado da professora e o que a turma fez. A faixa de dias no topo "
+                    . "mostra a semana (o ponto marca os dias com agenda); com mais de um filho na Educação Infantil, escolha o filho no topo.\n"
+                    . "Itens da agenda (permissão 'Lançar e corrigir em qualquer turma'): Agenda > 'Itens da agenda' — mude nome, emoji, ordem, tipo "
+                    . "(opções ou número), as opções com a cor de cada uma (verde, amarelo, vermelho) e para quais etapas vale (ex.: fralda só Bebês e "
+                    . "Bem pequenas). Desligar um item tira das agendas novas sem apagar as antigas.",
             ],
             [
                 'id' => 'planejamento', 'area' => 'Pedagógico', 'titulo' => 'Planejamento de aulas (plano de aula, com ajuda do Max)',

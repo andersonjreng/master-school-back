@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\PushController;
 use App\Http\Controllers\Api\RematriculaController;
 use App\Http\Controllers\Api\HorarioController;
 use App\Http\Controllers\Api\ImportacaoController;
+use App\Http\Controllers\Api\AgendaController;
 use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\VinculoProfessorTurmaDisciplinaController;
 use Illuminate\Support\Facades\Route;
@@ -561,4 +562,15 @@ Route::prefix('importacao')->middleware('max.jwt')->group(function () {
     Route::post('/analisar', [ImportacaoController::class, 'analisar']);
     Route::post('/', [ImportacaoController::class, 'executar']);
     Route::delete('/{id}', [ImportacaoController::class, 'desfazer'])->whereNumber('id');
+});
+
+// Agenda da Educação Infantil: professor da turma preenche, família vê os filhos (regras no controller/AgendaService).
+Route::prefix('agenda')->middleware('max.jwt')->group(function () {
+    Route::get('/', [AgendaController::class, 'inicio']);
+    Route::get('/itens', [AgendaController::class, 'itens']);
+    Route::put('/itens', [AgendaController::class, 'salvarItens']);
+    Route::get('/turmas/{turmaId}', [AgendaController::class, 'dia'])->whereNumber('turmaId');
+    Route::put('/turmas/{turmaId}', [AgendaController::class, 'salvar'])->whereNumber('turmaId');
+    Route::post('/turmas/{turmaId}/enviar', [AgendaController::class, 'enviar'])->whereNumber('turmaId');
+    Route::get('/filhos/{alunoId}', [AgendaController::class, 'filho'])->whereNumber('alunoId');
 });
