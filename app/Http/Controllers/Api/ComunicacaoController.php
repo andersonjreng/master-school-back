@@ -46,6 +46,8 @@ class ComunicacaoController extends Controller
     /** Assinaturas por área; o front só recarrega o que mudou. */
     public function pulso(\App\Services\Comunicacao\PulsoComunicacao $pulso): JsonResponse
     {
+        // Comunicados agendados cuja hora chegou: o aviso sai daqui mesmo sem cron.
+        $this->mural->avisarAgendadosDeTempoEmTempo();
         return response()->json(['data' => $pulso->versoes()]);
     }
 
@@ -197,6 +199,21 @@ class ComunicacaoController extends Controller
     public function muralConfirmacoes(Request $request, int $id): JsonResponse
     {
         return $this->resposta($this->mural->confirmacoes($id, $this->perfil($request)));
+    }
+
+    public function muralVotar(Request $request, int $id): JsonResponse
+    {
+        return $this->resposta($this->mural->votar($id, (array) $request->input('opcoes', []), $this->perfil($request)));
+    }
+
+    public function muralEncerrar(Request $request, int $id): JsonResponse
+    {
+        return $this->resposta($this->mural->encerrarEnquete($id, $request->boolean('encerrar', true), $this->perfil($request)));
+    }
+
+    public function muralVotos(Request $request, int $id): JsonResponse
+    {
+        return $this->resposta($this->mural->votos($id, $this->perfil($request)));
     }
 
     // ── Ocorrências ────────────────────────────────────────────────────────

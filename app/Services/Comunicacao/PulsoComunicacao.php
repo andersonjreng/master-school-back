@@ -32,6 +32,9 @@ class PulsoComunicacao
     /** @var array<string, bool> por banco: escola sem a migration de notificações ainda */
     private static array $temNotificacoes = [];
 
+    /** @var array<string, bool> por banco: escola já com enquetes/agendamento no mural */
+    private static array $temVotos = [];
+
     /** @return array<string, string> */
     public function versoes(): array
     {
@@ -57,8 +60,15 @@ class PulsoComunicacao
             ? (string) DB::selectOne("SELECT CONCAT_WS('.', COUNT(*), MAX(id), UNIX_TIMESTAMP(MAX(atualizado_em))) AS s FROM notificacoes")->s
             : '';
 
+        // Mural turbinado: votos de enquete e agendados que acabaram de sair também mudam o mural.
+        $temVotos = self::$temVotos[$banco] ??= \Illuminate\Support\Facades\Schema::hasTable('mural_votos');
+        $turbinado = $temVotos
+            ? (string) DB::selectOne("SELECT CONCAT_WS('.', (SELECT COUNT(*) FROM mural_votos), (SELECT UNIX_TIMESTAMP(MAX(criado_em)) FROM mural_votos),
+                (SELECT COUNT(*) FROM mural_posts WHERE publicar_em <= NOW()), (SELECT COUNT(*) FROM mural_posts WHERE enquete_encerrada_em IS NOT NULL)) AS s")->s
+            : '';
+
         $v = [
-            'mural' => $this->curta($linha->posts . '|' . $linha->reacoes),
+            'mural' => $this->curta($linha->posts . '|' . $linha->reacoes . '|' . $turbinado),
             'leituras' => $this->curta((string) $linha->leituras),
             'ocorrencias' => $this->curta((string) $linha->ocorrencias),
             'recados' => $this->curta($linha->mensagens . '|' . $linha->conversas),

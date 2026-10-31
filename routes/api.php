@@ -387,6 +387,9 @@ Route::prefix('comunicacao')->middleware('max.jwt')->group(function () {
     Route::post('/mural/{id}/reagir', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralReagir'])->whereNumber('id');
     Route::post('/mural/{id}/ocultar', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralOcultar'])->whereNumber('id');
     Route::get('/mural/{id}/confirmacoes', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralConfirmacoes'])->whereNumber('id');
+    Route::post('/mural/{id}/votar', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralVotar'])->whereNumber('id');
+    Route::post('/mural/{id}/encerrar', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralEncerrar'])->whereNumber('id');
+    Route::get('/mural/{id}/votos', [\App\Http\Controllers\Api\ComunicacaoController::class, 'muralVotos'])->whereNumber('id');
 
     Route::get('/ocorrencias', [\App\Http\Controllers\Api\ComunicacaoController::class, 'ocorrencias']);
     Route::get('/alunos', [\App\Http\Controllers\Api\ComunicacaoController::class, 'alunos']);

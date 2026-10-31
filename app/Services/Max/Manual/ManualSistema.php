@@ -230,14 +230,21 @@ final class ManualSistema
             [
                 'id' => 'mural', 'area' => 'Comunicação', 'titulo' => 'Mural de comunicados',
                 'menu' => 'Comunicação > Mural', 'acesso' => [],
-                'palavras' => 'comunicado mural aviso publicar circular recado geral confirmar leitura anexo pdf imagem fixar max escreve escrever texto redigir melhorar texto',
+                'palavras' => 'comunicado mural aviso publicar circular recado geral confirmar leitura anexo pdf imagem fixar max escreve escrever texto redigir melhorar texto enquete votacao votar pesquisa pergunta opcoes resultado agendar programar publicar depois horario',
                 'passos' => "Publicar (equipe): Comunicação > Mural > 'Escrever um comunicado'. Escolha 'Para quem' (escola toda, equipe, todas as famílias "
                     . "ou turmas), título, texto, anexo (imagem/PDF), validade, 'Pedir confirmação de leitura' e 'Fixar no topo' > Publicar. "
                     . "Professores publicam para a equipe ou para as famílias das próprias turmas; a escola toda é com a gestão. "
                     . "'Ver quem leu' mostra quem leu/confirmou.\n'Max, escreve pra mim' (abaixo do texto): escreva só as ideias (ex.: 'passeio dia "
                     . "14, sair 7h30, trazer lanche') e o Max devolve título e texto prontos; dá para pedir 'Mais curto', 'Mais formal' ou 'Mais "
                     . "acolhedor', usar ou descartar ('Desfazer' volta o rascunho). Ele não inventa datas nem valores: o que faltar vem entre "
-                    . "[colchetes] para completar. Nada é publicado sem tocar em Publicar.\nFamília: lê, reage e toca em 'Confirmar leitura' quando pedido (não comenta).",
+                    . "[colchetes] para completar. Nada é publicado sem tocar em Publicar.\n"
+                    . "Enquete: no comunicado, toque em 'Enquete' — o título vira a pergunta e o texto fica opcional; escreva de 2 a 8 opções (a "
+                    . "linha 'Adicionar opção' cria a próxima), marque 'Várias respostas' se quiser e escolha quem vê o resultado ('Quem votou vê o "
+                    . "resultado' ou 'Só eu'). Quem recebe toca na opção para votar (toca de novo para mudar). Quem publicou vê as porcentagens, "
+                    . "'Quem votou' (os nomes por opção e quem ainda não votou) e 'Encerrar' (ou 'Reabrir'). Depois de haver votos, as opções não mudam.\n"
+                    . "Agendar: toque em 'Agendar' e escolha dia e hora (atalhos 'Hoje 18h', 'Amanhã 7h', 'Segunda 7h') > botão 'Agendar'. Até a hora, "
+                    . "só quem publicou e a direção veem (selo 'Sai ...', borda tracejada; dá para editar ou trocar a hora); na hora ele aparece para "
+                    . "todos e o aviso chega no celular.\nFamília: lê, reage, vota nas enquetes e toca em 'Confirmar leitura' quando pedido (não comenta).",
             ],
             [
                 'id' => 'recados', 'area' => 'Comunicação', 'titulo' => 'Recados (conversa privada escola ↔ família)',
