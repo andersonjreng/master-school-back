@@ -276,6 +276,25 @@ final class ManualSistema
                     . "Vincular alunos: botão '+' na coluna Alunos.",
             ],
             [
+                'id' => 'importar-dados', 'area' => 'Secretaria', 'titulo' => 'Importar alunos, responsáveis e turmas de uma planilha',
+                'menu' => 'Secretaria > Importar dados (ou botão "Importar" na lista de alunos)', 'acesso' => ['pode' => ['pessoas.gerenciar']],
+                'palavras' => 'importar importacao planilha excel csv xlsx implantacao migrar outro sistema cadastrar varios alunos de uma vez em massa lote subir arquivo modelo desfazer importacao',
+                'passos' => "Para trazer de uma vez os alunos que a escola já tem (de outro sistema ou do Excel), uma linha por aluno com até dois responsáveis.\n"
+                    . "1. Secretaria > Importar dados > solte a planilha (.xlsx, .xls, .csv ou .ods) ou toque para escolher. 'Baixar planilha modelo' traz as colunas prontas.\n"
+                    . "2. Colunas: cada coluna da planilha aparece com exemplos e o campo do sistema em que vai entrar — a maioria é reconhecida pelo título "
+                    . "(estrela roxa). Ajuste o que precisar ou deixe 'Não importar'. Obrigatórios: nome do aluno, nascimento, turma, nome e CPF do responsável. "
+                    . "Colunas 'Mãe' e 'Pai' já dão o parentesco. Planilha com várias abas: escolha a aba no topo.\n"
+                    . "3. Conferir: os números mostram quantos alunos vão entrar, responsáveis e turmas novas. Em Turmas, ligue cada turma da planilha a uma turma "
+                    . "do sistema, 'Criar turma nova' (Berçário, Maternal, Jardim, Pré e Período viram Educação Infantil) ou 'Não importar estes alunos'; escolha "
+                    . "o ano letivo. 'Para revisar' lista as linhas com problema (vermelho: não entra; amarelo: entra com aviso, ex.: e-mail inválido fica sem "
+                    . "acesso ao app) — toque em 'Corrigir' para arrumar ali mesmo, sem mexer na planilha.\n"
+                    . "4. Importar. Irmãos: o responsável com o mesmo CPF vira um cadastro só, ligado aos dois. Quem já está no sistema (aluno pelo CPF ou nome + "
+                    . "nascimento; responsável pelo CPF) não é duplicado — dá para importar a mesma planilha de novo depois de corrigir. Com 'Famílias com e-mail já "
+                    . "entram no app' ligado, o responsável entra com o e-mail e os 6 primeiros números do CPF como senha.\n"
+                    . "Desfazer: na tela final ou em 'Importações anteriores' — tira os alunos, responsáveis e turmas que a importação criou, enquanto nada "
+                    . "(chamada, nota, cobrança) foi lançado para esses alunos. Criar turmas exige também a permissão de Turmas.",
+            ],
+            [
                 'id' => 'equipe', 'area' => 'Secretaria', 'titulo' => 'Professores e equipe (usuários e perfis)',
                 'menu' => 'Secretaria > Pessoas > Professores / Equipe', 'acesso' => ['pode' => ['equipe.gerenciar']],
                 'palavras' => 'professor cadastrar equipe usuario funcionario secretaria perfil senha acesso vincular turma disciplina',

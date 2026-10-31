@@ -39,6 +39,7 @@ use App\Http\Controllers\Api\TurmaController;
 use App\Http\Controllers\Api\PushController;
 use App\Http\Controllers\Api\RematriculaController;
 use App\Http\Controllers\Api\HorarioController;
+use App\Http\Controllers\Api\ImportacaoController;
 use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\VinculoProfessorTurmaDisciplinaController;
 use Illuminate\Support\Facades\Route;
@@ -552,4 +553,12 @@ Route::prefix('interesse-pais')->group(function () {
 Route::prefix('contato-escola')->group(function () {
     Route::post('/', [ContatoEscolaController::class, 'store'])->middleware('throttle:5,1');
     Route::get('/exportar', [ContatoEscolaController::class, 'exportar'])->middleware('throttle:10,1');
+});
+
+// Importação de alunos e responsáveis por planilha (implantação): exige pessoas.gerenciar (checado no controller).
+Route::prefix('importacao')->middleware('max.jwt')->group(function () {
+    Route::get('/', [ImportacaoController::class, 'inicio']);
+    Route::post('/analisar', [ImportacaoController::class, 'analisar']);
+    Route::post('/', [ImportacaoController::class, 'executar']);
+    Route::delete('/{id}', [ImportacaoController::class, 'desfazer'])->whereNumber('id');
 });
